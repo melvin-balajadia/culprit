@@ -137,7 +137,7 @@ describe("views and keys", () => {
     await screen.findByText("/api/users/7");
     fireEvent.click(screen.getByText("By endpoint"));
     const groups = [...document.querySelectorAll(".group-row")].map((g) => g.textContent);
-    expect(groups).toEqual(["50%GET/api/users/:id2× · —", "0%GET/api/health1× · —"]);
+    expect(groups).toEqual(["50%GET/api/users/:id2× · —☆", "0%GET/api/health1× · —☆"]);
   });
 
   it("moves with j/k and opens with Enter", async () => {
@@ -218,5 +218,27 @@ describe("Tester variables and saved requests", () => {
     fireEvent.click(screen.getAllByText("Save").at(-1)!);
     expect(fake.data.local.saved).toEqual([{ name: "GET /api/me", draft: { method: "GET", url: "{{base}}/api/me", headers: "", body: "", origin: "" } }]);
     vi.unstubAllGlobals();
+  });
+});
+
+describe("watching endpoints", () => {
+  it("watches an endpoint from the grouped view and shows its latest status across tabs", async () => {
+    fake.data.local.pins = [];
+    fake.data.local.requests = [
+      req({ url: "http://localhost:3000/api/cart", status: 200, startedAt: 3, tabId: 9, drift: [{ path: "total", now: "—", before: "number" }] }),
+      req({ url: "http://localhost:3000/api/cart", status: 500, startedAt: 2 })
+    ];
+    render(<Traffic onReplay={() => {}} />);
+    await screen.findByText("/api/cart");
+    fireEvent.click(screen.getByText("By endpoint"));
+    fireEvent.click(screen.getByLabelText("Watch GET /api/cart"));
+
+    const strip = await waitFor(() => document.querySelector(".watching") as HTMLElement);
+    expect(within(strip).getByText("1/2 failed")).toBeTruthy(); // counts the other tab's call too
+    expect(within(strip).getByText("shape changed")).toBeTruthy();
+    expect(fake.data.local.pins).toEqual(["GET localhost:3000/api/cart"]);
+
+    fireEvent.click(within(strip).getByLabelText("Stop watching GET /api/cart"));
+    await waitFor(() => expect(document.querySelector(".watching")).toBeNull());
   });
 });

@@ -17,6 +17,14 @@ export interface ApiRequest {
   deep?: boolean; // captured through the debugger
   callSite?: string; // e.g. "src/api/orders.ts:42 loadOrders", from the debugger's initiator stack
   links?: Link[]; // earlier responses that supplied values this request used
+  drift?: ShapeChange[]; // a successful response whose shape differs from this endpoint's usual one
+}
+
+// A field-level difference between two response shapes (paths and types only, never values).
+export interface ShapeChange {
+  path: string;
+  now: string; // type in this response, or "—" when the field is missing
+  before: string; // type(s) in the reference
 }
 
 // "Response A's field fed request B": ids and field paths only, never the value, so it is safe to persist.

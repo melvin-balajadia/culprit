@@ -14,6 +14,8 @@
 - **vs. last success**: a failed call is matched to the last successful call to the same endpoint (`/users/42` ≈ `/users/7`). You see what changed (status, query params, request headers, and, with bodies, response fields that went missing, appeared, or changed type), and headers that went missing are called out.
 - **Deep capture** (opt-in, per tab): records request/response bodies and the exact CORS error through Chrome's debugger, including calls from the page's iframes and workers. JSON bodies show as a collapsible tree.
 - **Replay in tester**: opens a captured call in the tester with its real headers and body. The tester uses your browser session and isn't blocked by CORS on sites you allow.
+- **Shape changed**: Culprit learns each endpoint's usual JSON response from its successes (Deep capture) and flags a 200 that drifts from it: a field that was always there is missing, or a field is suddenly `null` or another type. Optional fields and empty arrays don't trigger it.
+- **Watch endpoints**: ☆ an endpoint (By endpoint view, or Watch in a call) to keep it at the top of Traffic with its latest status, failure count and drift, across tabs and filters.
 - **Tester**: saved requests and `{{variables}}` (`name=value` per line), kept on this computer only.
 - **Copy report / cURL / Export HAR**: Markdown (including the chain and the culprit), cURL, or a HAR file of what the list shows, with tokens, cookies, passwords, and API keys masked.
 
@@ -26,7 +28,7 @@ npm run check      # lint + tests + build; CI runs the same on every push
 npm run demo       # playground API with one button per failure case (PORT=4010 to change the port)
 ```
 
-The demo's **Chain:** buttons show the trace: turn on Deep capture, click one, then open its last call and read **Why?**.
+The demo's **Chain:** buttons show the trace (turn on Deep capture, click one, then open its last call and read **Why?**), and **Drift: cart loses total** shows a 200 whose shape changed.
 
 Where things live: `src/background.ts` wires Chrome events to the pure modules in `src/shared/` (`capture.ts` for deep capture, `lineage.ts` for the Why? trace, `chain.ts` for re-running a chain, `export.ts` for Postman, Vitest and HAR, `diagnostics.ts`, `http.ts` for masking, cURL and the tester), which hold the logic and the unit tests. `src/panel/` is the React side panel.
 

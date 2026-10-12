@@ -1,7 +1,8 @@
 import type { ApiRequest, Headers, RawData } from "./shared/types";
-import { isFailure, redactHeaders, redactUrl, toHeaders } from "./shared/http";
+import { endpointKey, isFailure, isOk, redactHeaders, redactUrl, toHeaders } from "./shared/http";
 import { BODY_LIMIT, DeepCapture, bodyText, toCapture, type CdpParams } from "./shared/capture";
 import { LineageIndex } from "./shared/lineage";
+import { ShapeBook, parseShape } from "./shared/shape";
 
 const MAX_REQUESTS = 100;
 const FLUSH_MS = 250;
@@ -50,6 +51,9 @@ function save(r: ApiRequest, raw?: RawData) {
 
 // Which earlier response supplied each value a request used. Memory only; holds fingerprints, not values.
 const lineage = new LineageIndex();
+// Each endpoint's usual response shape, learned from its successes. Paths and types only; kept across Clear
+// so drift alerts don't have to relearn.
+const shapes = new ShapeBook();
 
 function clearHistory() {
   buffer = [];
@@ -210,6 +214,12 @@ chrome.debugger.onEvent.addListener(async (source, method, params) => {
   const { record, raw } = toCapture(done, body);
   record.links = lineage.link(record, raw);
   lineage.add(record, raw, done.entry.responseHeaders);
+  // A success whose shape differs from this endpoint's usual one (missing field, new null).
+  const shape = isOk(record) ? parseShape(raw.responseBody) : undefined;
+  if (shape) {
+    const drift = shapes.check(endpointKey(record.method, raw.url ?? record.url), shape);
+    if (drift.length) record.drift = drift;
+  }
   save(record, raw);
 });
 

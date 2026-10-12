@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ApiRequest, RawData } from "../shared/types";
-import { REDACTED, buildReport, compare, exportCurl, findBaseline, headerLines, isFailure, replayable } from "../shared/http";
+import { REDACTED, buildReport, compare, endpointKey, exportCurl, findBaseline, headerLines, isFailure, replayable } from "../shared/http";
 import { diagnose } from "../shared/diagnostics";
 import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms } from "./ui";
 import type { Draft } from "./Tester";
 import Trace from "./Trace";
-import { GroupView, ListView, TimelineView } from "./Views";
+import { GroupView, ListView, TimelineView, Watching } from "./Views";
 import ChainRunner from "./ChainRunner";
 import { parseShape, shapeDiff } from "../shared/shape";
 import { traceBack } from "../shared/lineage";
@@ -51,6 +51,7 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
   const [focusIndex, setFocusIndex] = useState(-1); // -1: no keyboard focus until j/k is pressed
   const search = useRef<HTMLInputElement>(null);
   const [deepTabs, setDeepTabs] = useState<number[]>([]);
+  const [pins, setPins] = useState<string[]>([]); // watched endpoint keys
   const [tab, setTab] = useState<chrome.tabs.Tab>();
   const [query, setQuery] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -62,12 +63,14 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
   useEffect(() => {
     chrome.storage.local.get("requests").then((d) => setRequests((d.requests as ApiRequest[]) ?? []));
     chrome.storage.session.get("deepTabs").then((d) => setDeepTabs((d.deepTabs as number[]) ?? []));
+    chrome.storage.local.get("pins").then((d) => setPins((d.pins as string[]) ?? []));
     const loadTab = () => chrome.tabs.query({ active: true, currentWindow: true }).then(([t]) => setTab(t));
     loadTab();
 
     const onChange = (c: Record<string, chrome.storage.StorageChange>) => {
       if (c.requests) setRequests((c.requests.newValue as ApiRequest[]) ?? []);
       if (c.deepTabs) setDeepTabs((c.deepTabs.newValue as number[]) ?? []);
+      if (c.pins) setPins((c.pins.newValue as string[]) ?? []);
     };
     chrome.storage.onChanged.addListener(onChange);
     chrome.tabs.onActivated.addListener(loadTab);
@@ -102,6 +105,12 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
     if (e.key !== "/") e.preventDefault();
   });
 
+  const togglePin = (key: string) => {
+    const next = pins.includes(key) ? pins.filter((k) => k !== key) : [...pins, key];
+    setPins(next);
+    void chrome.storage.local.set({ pins: next });
+  };
+
   if (selected) {
     return (
       <Detail
@@ -111,6 +120,8 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
         active={active}
         onBack={() => setSelected(undefined)}
         onSelect={setSelected}
+        pinned={pins.includes(endpointKey(selected.method, selected.url))}
+        onTogglePin={() => togglePin(endpointKey(selected.method, selected.url))}
         onReplay={onReplay}
       />
     );
@@ -152,6 +163,7 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
       {deepError && <p className="warn-text">{deepError}</p>}
 
       <SiteAccess tab={tab} />
+      <Watching pins={pins} history={requests} onOpen={setSelected} onTogglePin={togglePin} />
 
       <div className="segmented" role="group" aria-label="View">
         {VIEWS.map(([key, label]) => (
@@ -164,7 +176,7 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
       {shown.length === 0 ? (
         <p className="muted empty">No API calls yet. Use your app (or reload it) and fetch/XHR requests appear here.</p>
       ) : (
-        <ViewComponent shown={shown} history={requests} focusedId={active ? ordered[focus]?.id : undefined} onOpen={setSelected} />
+        <ViewComponent shown={shown} history={requests} focusedId={active ? ordered[focus]?.id : undefined} onOpen={setSelected} pins={pins} onTogglePin={togglePin} />
       )}
       <p className="muted small keys">
         Keys: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>/</kbd> filter · <kbd>e</kbd> errors · <kbd>v</kbd> view
@@ -173,10 +185,12 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
   );
 }
 
-function Detail({ r, history, active, onBack, onSelect, onReplay }: {
+function Detail({ r, history, active, onBack, onSelect, onReplay, pinned, onTogglePin }: {
   r: ApiRequest;
   history: ApiRequest[];
   active: boolean;
+  pinned: boolean;
+  onTogglePin: () => void;
   onBack: () => void;
   onSelect: (r: ApiRequest) => void;
   onReplay: (d: Draft) => void;
@@ -244,6 +258,9 @@ function Detail({ r, history, active, onBack, onSelect, onReplay }: {
 
       <div className="toolbar">
         <button onClick={replay}>Replay in tester</button>
+        <button aria-pressed={pinned} onClick={onTogglePin} title="Keep this endpoint at the top of Traffic with its latest status">
+          {pinned ? "★ Watching" : "☆ Watch endpoint"}
+        </button>
         <CopyButton label="Copy cURL" text={() => exportCurl(r.method, url, { ...sentHeaders, ...(sent.origin && { origin: sent.origin }) }, raw?.requestBody)} />
         <CopyButton label="Copy report" text={() => report()} />
       </div>

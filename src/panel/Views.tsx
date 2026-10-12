@@ -10,6 +10,16 @@ interface ViewProps {
   history: ApiRequest[]; // everything, for links
   focusedId?: string; // keyboard focus (j/k)
   onOpen: (r: ApiRequest) => void;
+  pins?: string[]; // watched endpoint keys
+  onTogglePin?: (key: string) => void;
+}
+
+// "GET api.test/users/:id" -> { method: "GET", host: "api.test", path: "/users/:id" }
+export function splitKey(key: string) {
+  const space = key.indexOf(" ");
+  const rest = key.slice(space + 1);
+  const slash = rest.indexOf("/");
+  return { method: key.slice(0, space), host: slash < 0 ? rest : rest.slice(0, slash), path: slash < 0 ? "/" : rest.slice(slash) };
 }
 
 export function Row({ r, focused, onOpen }: { r: ApiRequest; focused?: boolean; onOpen: (r: ApiRequest) => void }) {
@@ -19,9 +29,41 @@ export function Row({ r, focused, onOpen }: { r: ApiRequest; focused?: boolean; 
         <StatusPill r={r} />
         <b>{r.method}</b>
         <span className="path">{pathOf(r.url)}</span>
+        {r.drift?.length ? <span className="drift-mark" title="Response shape changed from this endpoint's usual one">shape changed</span> : null}
         <span className="muted">{ms(r.durationMs)}</span>
       </button>
     </li>
+  );
+}
+
+// Watched endpoints, across tabs and filters: latest status, failures, and drift.
+export function Watching({ pins, history, onOpen, onTogglePin }: { pins: string[]; history: ApiRequest[]; onOpen: (r: ApiRequest) => void; onTogglePin: (key: string) => void }) {
+  if (!pins.length) return null;
+  return (
+    <div className="watching">
+      <b className="small">Watching</b>
+      <ul className="list">
+        {pins.map((key) => {
+          const calls = history.filter((r) => endpointKey(r.method, r.url) === key);
+          const last = calls[0];
+          const failed = calls.filter(isFailure).length;
+          const drift = calls.some((c) => c.drift?.length);
+          const { method, host, path } = splitKey(key);
+          return (
+            <li key={key} className="watch-row">
+              <button className={`row ${last && isFailure(last) ? "failed" : ""}`} disabled={!last} onClick={() => last && onOpen(last)} title={host}>
+                {last ? <StatusPill r={last} /> : <span className="pill muted">—</span>}
+                <b>{method}</b>
+                <span className="path">{path}</span>
+                {drift && <span className="drift-mark">shape changed</span>}
+                <span className="muted small">{calls.length ? `${failed}/${calls.length} failed` : "no calls yet"}</span>
+              </button>
+              <button className="unpin" aria-label={`Stop watching ${method} ${path}`} onClick={() => onTogglePin(key)}>×</button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -36,7 +78,7 @@ export function ListView({ shown, focusedId, onOpen }: ViewProps) {
 }
 
 // One row per endpoint (/users/42 and /users/7 together), worst failure rate first.
-export function GroupView({ shown, focusedId, onOpen }: ViewProps) {
+export function GroupView({ shown, focusedId, onOpen, pins = [], onTogglePin }: ViewProps) {
   const groups = new Map<string, ApiRequest[]>();
   for (const r of shown) {
     const key = endpointKey(r.method, r.url);
@@ -46,8 +88,7 @@ export function GroupView({ shown, focusedId, onOpen }: ViewProps) {
     const failed = calls.filter(isFailure).length;
     const timed = calls.filter((c) => c.durationMs !== undefined);
     const avg = timed.length ? Math.round(timed.reduce((sum, c) => sum + c.durationMs!, 0) / timed.length) : undefined;
-    const [method, rest] = [key.slice(0, key.indexOf(" ")), key.slice(key.indexOf(" ") + 1)];
-    return { key, method, path: rest.slice(rest.indexOf("/")), host: rest.slice(0, rest.indexOf("/")), calls, failed, avg };
+    return { key, ...splitKey(key), calls, failed, avg };
   });
   rows.sort((a, b) => b.failed / b.calls.length - a.failed / a.calls.length || b.calls.length - a.calls.length);
 
@@ -65,6 +106,20 @@ export function GroupView({ shown, focusedId, onOpen }: ViewProps) {
                 <span className="muted">
                   {g.calls.length}× · {ms(g.avg)}
                 </span>
+                {onTogglePin && (
+                  <button
+                    className="pin"
+                    aria-pressed={pins.includes(g.key)}
+                    aria-label={`${pins.includes(g.key) ? "Stop watching" : "Watch"} ${g.method} ${g.path}`}
+                    title="Watch this endpoint"
+                    onClick={(e) => {
+                      e.preventDefault(); // don't toggle the group open/closed
+                      onTogglePin(g.key);
+                    }}
+                  >
+                    {pins.includes(g.key) ? "★" : "☆"}
+                  </button>
+                )}
               </summary>
               <ul className="list">
                 {g.calls.map((r) => (

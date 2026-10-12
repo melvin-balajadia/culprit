@@ -44,6 +44,12 @@ const cases = {
     await fetch("/api/session/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refresh_token: login.refresh_token }) });
     await fetch("/api/session/users/" + login.user.id + "/orders", { headers: { Authorization: "Bearer " + login.access_token } });
   },
+  // Drift: two normal responses teach Culprit the cart's shape; the third one is a 200 that lost "total".
+  "Drift: cart loses total": async () => {
+    await fetch("/api/cart");
+    await fetch("/api/cart");
+    await fetch("/api/cart?after=deploy");
+  },
   "Chain: missing user": async () => {
     const profile = await (await fetch("/api/profile")).json();
     await fetch("/api/users/" + profile.user?.id);
@@ -114,6 +120,12 @@ http
       return validToken(req) ? send(200, { orders: [{ id: 9001, total: 42 }] }) : send(401, unauthorized);
     }
     if (path === "/api/profile") return send(200, { user: null });
+    if (path === "/api/cart") {
+      const items = [{ sku: "A1", qty: 2 }];
+      return req.url.includes("after=deploy")
+        ? send(200, { items, currency: null }) // the "deploy" dropped total and nulled currency
+        : send(200, { items, total: 42, currency: "EUR" });
+    }
 
     const route = routes[`${req.method} ${path}`];
     if (!route) return send(404, { error: `no route ${req.method} ${path}` });

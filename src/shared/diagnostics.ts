@@ -130,6 +130,11 @@ export function diagnose(r: ApiRequest, ctx: DiagnoseContext = {}): Diagnostic[]
     }
   }
 
+  if (r.drift?.length) {
+    const fields = r.drift.slice(0, 3).map((c) => (c.now === "—" ? `${c.path} is missing` : `${c.path} is now ${c.now} (was ${c.before})`));
+    out.push(d(["warning", "Response shape changed", `Compared with this endpoint's earlier successes: ${fields.join("; ")}${r.drift.length > 3 ? "; …" : ""}.`, "A 200 that breaks the UI often starts here: check what changed in the API (deploy, version, feature flag) and the code that reads these fields."]));
+  }
+
   // A response that took long; a cancelled long-poll or a timeout is already explained above.
   if (status !== undefined && (r.durationMs ?? 0) > SLOW_MS) {
     out.push(d(["info", "Slow response", `Took ${r.durationMs} ms.`, "Look for slow queries, N+1 calls, or missing caching on the server."]));

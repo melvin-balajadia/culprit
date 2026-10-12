@@ -190,3 +190,12 @@ kbd { font: 10px ui-monospace, monospace; padding: 0 4px; border: 1px solid var(
 .step-result { margin-top: 4px; }
 .badge.warn { background: var(--warn); }
 .saved .chips li { font-size: 12px; }
+
+/* Drift marker and watched endpoints */
+.drift-mark { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 0 5px; border-radius: 8px; color: var(--warn); border: 1px solid var(--warn); white-space: nowrap; }
+.watching { margin-top: 8px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--soft); }
+.watching .list { margin-top: 2px; }
+.watch-row { display: flex; align-items: center; }
+.watch-row .row { flex: 1; min-width: 0; }
+.unpin, .pin { border: 0; background: none; padding: 0 6px; color: var(--muted); }
+.pin[aria-pressed="true"] { color: var(--warn); }
