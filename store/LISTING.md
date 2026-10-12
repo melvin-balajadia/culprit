@@ -1,6 +1,6 @@
 # Chrome Web Store submission: Culprit
 
-Copy these into the developer dashboard. Screenshots are in `store/screenshots/` (1280×800).
+Copy these into the developer dashboard. Upload-ready images (PNG, the formats the store accepts) are in `store/screenshots/store-upload/`.
 
 ## Package
 
@@ -58,6 +58,14 @@ Copy these into the developer dashboard. Screenshots are in `store/screenshots/`
 
 ## Screenshots
 
-- `store/screenshots/1-why.png`: a 401 traced back to the failed token refresh
-- `store/screenshots/2-rerun.png`: the chain re-run with fresh data, 401 → 200
-- `store/screenshots/3-watch.png`: a 200 whose response shape changed, on a watched endpoint
+Upload these from `store/screenshots/store-upload/` (1280×800 PNG, no transparency; the store allows 5):
+
+1. `01-why.png`: a 401 traced back to the failed token refresh
+2. `02-rerun.png`: the chain re-run with fresh data, 401 → 200
+3. `03-export.png`: the chain turned into a Vitest test
+4. `04-shape-changed.png`: a 200 whose response shape changed, on a watched endpoint
+5. `05-compare.png`: diagnosis compared with the last success
+
+**Small promo tile** (440×280): `promo-small.png`.
+
+The WebP files in `store/screenshots/` (2560×1600, plus `featured.webp` at 1920×1080 and a sixth timeline shot) are high-resolution versions for the portfolio, case study and GitHub. The store doesn't accept WebP.

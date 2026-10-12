@@ -11,7 +11,7 @@ Culprit is a Chrome extension for web developers. It watches the API calls a web
 | **Status** | Feature-complete; store listing, privacy policy and screenshots prepared; not yet published |
 | **Repository** | [github.com/melvin-balajadia/culprit](https://github.com/melvin-balajadia/culprit) |
 
-![The Why? trace: a 401 traced back to the token refresh that failed before it](../store/screenshots/1-why.png)
+![Culprit: find the API call that really broke it](../store/screenshots/featured.webp)
 
 ---
 
@@ -241,9 +241,17 @@ flowchart TD
 | **Watched endpoints** | Pin an endpoint to keep its latest status at the top | Keep an eye on the endpoints you care about |
 | **Tester** | Send your own requests using your browser session, with saved requests and `{{variables}}` | Quick checks without leaving the browser |
 
-![Re-running the chain: the 401 becomes a 200](../store/screenshots/2-rerun.png)
+![The Why? trace: a 401 traced back to the token refresh that failed before it](../store/screenshots/01-why.webp)
 
-![A 200 response whose shape changed, on a watched endpoint](../store/screenshots/3-watch.png)
+![Re-running the chain: the 401 becomes a 200](../store/screenshots/02-rerun.webp)
+
+![Turning the chain into a Vitest test](../store/screenshots/03-export.webp)
+
+![A 200 response whose shape changed, on a watched endpoint](../store/screenshots/04-shape-changed.webp)
+
+![Diagnosis compared with the last success](../store/screenshots/05-compare.webp)
+
+![The timeline, with the calls linked to the hovered one highlighted](../store/screenshots/06-timeline.webp)
 
 ---
 

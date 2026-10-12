@@ -52,7 +52,7 @@ Nothing leaves the browser. There is no backend and no remote code. Details: [PR
 
 ## Publishing
 
-[store/LISTING.md](store/LISTING.md) has the Chrome Web Store listing text, the permission justifications for the review form, and packaging steps. Screenshots (1280×800) are in `store/screenshots/`.
+[store/LISTING.md](store/LISTING.md) has the Chrome Web Store listing text, the permission justifications for the review form, and packaging steps. Store-ready images are in `store/screenshots/store-upload/`; high-resolution WebP versions and a featured image are in `store/screenshots/`.
 
 ## Limits
 
