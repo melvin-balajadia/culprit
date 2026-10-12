@@ -6,6 +6,7 @@ import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms } from "./ui"
 import type { Draft } from "./Tester";
 import Trace from "./Trace";
 import { GroupView, ListView, TimelineView } from "./Views";
+import ChainRunner from "./ChainRunner";
 import { parseShape, shapeDiff } from "../shared/shape";
 
 type View = "list" | "group" | "timeline";
@@ -230,6 +231,12 @@ function Detail({ r, history, active, onBack, onSelect, onReplay }: {
 
       <h3>Why?</h3>
       <Trace r={r} history={history} onSelect={onSelect} />
+      {(r.links ?? []).length > 0 && (
+        <details className="rerun">
+          <summary>Re-run this chain with fresh data</summary>
+          <ChainRunner r={r} history={history} />
+        </details>
+      )}
 
       {failed && (
         <>

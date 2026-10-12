@@ -177,3 +177,15 @@ code { font: 11px ui-monospace, monospace; }
 .tl-bar.muted { background: var(--muted); }
 .keys { margin-top: 12px; }
 kbd { font: 10px ui-monospace, monospace; padding: 0 4px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--soft); }
+
+/* Re-run chain */
+.rerun { margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+.rerun > summary { color: var(--accent); }
+.steps { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 8px; }
+.steps > li { border-left: 2px solid var(--line); padding-left: 8px; }
+.step-head { display: flex; align-items: center; gap: 6px; }
+.step-head .num { font-size: 11px; font-weight: 700; color: var(--muted); min-width: 14px; }
+.step-edit { display: grid; gap: 4px; margin: 4px 0; }
+.step-edit input { width: 100%; }
+.step-result { margin-top: 4px; }
+.badge.warn { background: var(--warn); }

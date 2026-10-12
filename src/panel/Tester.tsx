@@ -3,6 +3,7 @@ import type { ApiRequest } from "../shared/types";
 import { exportCurl, fetchErrorMessage, formatJson, parseHeaderLines, sendRequest, type TestResult } from "../shared/http";
 import { diagnose } from "../shared/diagnostics";
 import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms } from "./ui";
+import { requestHosts, setOriginRule } from "./origin";
 
 export interface Draft {
   method: string;
@@ -15,33 +16,6 @@ export interface Draft {
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const EMPTY: Draft = { method: "GET", url: "", headers: "", body: "", origin: "" };
-
-// fetch() can't set Origin, and by default ours is chrome-extension://…, which server CORS allowlists reject.
-// A session rule rewrites it on the tester's own requests so a replay looks like the app's call.
-const { HeaderOperation, ResourceType, RuleActionType } = chrome.declarativeNetRequest;
-function setOriginRule(origin: string) {
-  return chrome.declarativeNetRequest.updateSessionRules({
-    removeRuleIds: [1],
-    addRules: [
-      {
-        id: 1,
-        action: {
-          type: RuleActionType.MODIFY_HEADERS,
-          requestHeaders: [
-            origin
-              ? { header: "origin", operation: HeaderOperation.SET, value: origin }
-              : { header: "origin", operation: HeaderOperation.REMOVE }
-          ]
-        },
-        condition: {
-          initiatorDomains: [chrome.runtime.id], // only this extension's own requests, never the page's
-
-          resourceTypes: [ResourceType.XMLHTTPREQUEST]
-        }
-      }
-    ]
-  });
-}
 
 export default function Tester({ draft }: { draft?: Draft }) {
   // A replay remounts this component (App gives it a new key), so every field, including a DELETE
@@ -103,7 +77,7 @@ export default function Tester({ draft }: { draft?: Draft }) {
     try {
       // First await, so it still counts as part of the click: grants this host so the call isn't blocked
       // by CORS. No-op if already allowed; if refused we still try, the server may allow CORS itself.
-      await chrome.permissions.request({ origins: [`${url.protocol}//${url.hostname}/*`] }).catch(() => false);
+      await requestHosts([url.toString()]);
       try {
         await setOriginRule(origin);
       } catch (e) {

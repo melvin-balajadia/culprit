@@ -193,8 +193,8 @@ export interface Trace {
   reason?: string;
 }
 
-// Walk links upstream and pick the most likely root cause.
-export function traceBack(r: ApiRequest, history: ApiRequest[]): Trace {
+// The calls that supplied values to this one, directly or indirectly, oldest first (up to 5 hops back).
+export function ancestorsOf(r: ApiRequest, history: ApiRequest[]): ApiRequest[] {
   const byId = new Map(history.map((h) => [h.id, h]));
   const ancestors = new Map<string, ApiRequest>();
   let frontier = [r];
@@ -211,7 +211,13 @@ export function traceBack(r: ApiRequest, history: ApiRequest[]): Trace {
     }
     frontier = next;
   }
-  const chain = [...[...ancestors.values()].sort((a, b) => a.startedAt - b.startedAt), r];
+  return [...ancestors.values()].sort((a, b) => a.startedAt - b.startedAt);
+}
+
+// Walk links upstream and pick the most likely root cause.
+export function traceBack(r: ApiRequest, history: ApiRequest[]): Trace {
+  const byId = new Map(history.map((h) => [h.id, h]));
+  const chain = [...ancestorsOf(r, history), r];
   const describe = (x: ApiRequest) => `${x.method} ${pathOf(x.url)}`;
 
   // 1. An ancestor failed: everything after it inherited a bad value.

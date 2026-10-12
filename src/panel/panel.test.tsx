@@ -146,8 +146,9 @@ describe("views and keys", () => {
     await screen.findByText("/api/users/7");
     expect(rowFor("/api/users/7").className).not.toContain("focused"); // nothing focused before the first key
     fireEvent.keyDown(window, { key: "j" });
+    await waitFor(() => expect(rowFor("/api/users/7").className).toContain("focused"));
     fireEvent.keyDown(window, { key: "j" });
-    expect(rowFor("/api/users/42").className).toContain("focused");
+    await waitFor(() => expect(rowFor("/api/users/42").className).toContain("focused"));
     fireEvent.keyDown(window, { key: "Enter" });
     expect(await screen.findByText("← All requests")).toBeTruthy();
     expect(screen.getByText("http://localhost:3000/api/users/42")).toBeTruthy();
@@ -161,5 +162,35 @@ describe("views and keys", () => {
     const filter = await screen.findByPlaceholderText(/Filter by URL/);
     fireEvent.keyDown(filter, { key: "e" });
     expect((screen.getByLabelText(/Errors/) as HTMLInputElement).checked).toBe(false);
+  });
+});
+
+describe("Re-run chain", () => {
+  it("asks before re-sending a POST, then carries the fresh token into the next call", async () => {
+    fake.data.local.requests = [
+      req({ url: "http://localhost:3000/api/orders", status: 401, startedAt: 2, links: [{ from: "login", fromPath: "response.access_token", to: "header.authorization", confidence: "certain" }] }),
+      { ...req({ url: "http://localhost:3000/api/login", method: "POST", status: 200, startedAt: 1 }), id: "login" }
+    ];
+    fake.data.session["raw:login"] = { url: "http://localhost:3000/api/login", requestHeaders: { "content-type": "application/json" }, requestBody: '{"username":"ada"}' };
+    fake.data.session["raw:http://localhost:3000/api/orders"] = { url: "http://localhost:3000/api/orders", requestHeaders: { authorization: "Bearer stale-token-123" } };
+    const fetchMock = vi.fn(async (url: string) =>
+      url.endsWith("/login")
+        ? new Response('{"access_token":"fresh-token-456"}', { status: 200, headers: { "content-type": "application/json" } })
+        : new Response("{}", { status: 200, headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<Traffic onReplay={() => {}} />);
+    await screen.findByText("/api/orders");
+    fireEvent.click(rowFor("/api/orders"));
+    fireEvent.click(await screen.findByText("Run 2 calls"));
+    expect(fetchMock).not.toHaveBeenCalled(); // the POST needs confirming first
+
+    fireEvent.click(screen.getByText(/Confirm: run 1 call that changes data/));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [, ordersInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect((ordersInit.headers as Record<string, string>).authorization).toBe("Bearer fresh-token-456");
+    await waitFor(() => expect(document.querySelectorAll(".step-result")).toHaveLength(2)); // each step shows its new result
+    vi.unstubAllGlobals();
   });
 });
