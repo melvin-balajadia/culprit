@@ -240,6 +240,23 @@ export function traceBack(r: ApiRequest, history: ApiRequest[]): Trace {
   return { chain };
 }
 
+// Every call connected to this one by links, upstream (what fed it) and downstream (what it fed).
+export function relatedIds(r: ApiRequest, history: ApiRequest[]): Set<string> {
+  const ids = new Set(traceBack(r, history).chain.map((x) => x.id));
+  let frontier = new Set([r.id]);
+  for (let depth = 0; depth < 5 && frontier.size; depth++) {
+    const next = new Set<string>();
+    for (const h of history) {
+      if (!ids.has(h.id) && (h.links ?? []).some((l) => frontier.has(l.from))) {
+        ids.add(h.id);
+        next.add(h.id);
+      }
+    }
+    frontier = next;
+  }
+  return ids;
+}
+
 function pathOf(url: string) {
   try {
     return new URL(url).pathname;

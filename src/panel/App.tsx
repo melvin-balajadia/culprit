@@ -22,6 +22,7 @@ export default function App() {
       {/* Both stay mounted so switching views keeps their state. */}
       <div hidden={view !== "traffic"}>
         <Traffic
+          active={view === "traffic"}
           onReplay={(d) => {
             setDraft((prev) => ({ key: (prev?.key ?? 0) + 1, value: d }));
             setView("tester");

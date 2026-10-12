@@ -3,10 +3,14 @@
 **Find the API call that really broke it.** A Chrome side-panel extension that shows *why* your app's API calls fail, not just that they did.
 
 - **Why? (root-cause trace)**: with Deep capture on, Culprit notices when a value from one response (a token, an id, a link) is used by a later request, and links the two. Open a failed call to see the chain of calls that led to it, with the **culprit** marked: the refresh that failed before your 401, or the response that returned `null` before your request to `/users/undefined`. Links store field paths only, never values.
-- **Traffic**: every fetch/XHR from the current tab, with failures highlighted and a red error count on the toolbar icon. Each call shows where in your code it was made (with Deep capture).
+- **Traffic**: every fetch/XHR from the current tab, with failures highlighted and a red error count on the toolbar icon. Each call shows where in your code it was made (with Deep capture). Three views:
+  - **List**, newest first;
+  - **By endpoint**: `/users/42` and `/users/7` grouped, with failure rate and average time, worst first;
+  - **Timeline**: calls as bars over time; hover one to highlight the calls linked to it.
+- **Keyboard**: `j`/`k` move, `Enter` open, `/` filter, `e` errors only, `v` switch view; in a call, `Esc` back, `r` replay, `c` copy report.
 - **Diagnosis**: status rules plus context: likely culprit, expired token, URL built from a missing value, 401 with no credentials sent, `ERR_CONNECTION_REFUSED` ("is the backend running?"), HTML returned instead of JSON, Retry-After, Allow, slow calls.
-- **vs. last success**: a failed call is matched to the last successful call to the same endpoint (`/users/42` ≈ `/users/7`). You see what changed (status, query params, request headers), and headers that went missing are called out.
-- **Deep capture** (opt-in, per tab): records request/response bodies and the exact CORS error through Chrome's debugger.
+- **vs. last success**: a failed call is matched to the last successful call to the same endpoint (`/users/42` ≈ `/users/7`). You see what changed (status, query params, request headers, and, with bodies, response fields that went missing, appeared, or changed type), and headers that went missing are called out.
+- **Deep capture** (opt-in, per tab): records request/response bodies and the exact CORS error through Chrome's debugger, including calls from the page's iframes and workers. JSON bodies show as a collapsible tree.
 - **Replay in tester**: opens a captured call in the tester with its real headers and body. The tester uses your browser session and isn't blocked by CORS on sites you allow.
 - **Copy report / cURL**: Markdown or cURL for tickets and chat, with tokens, cookies, passwords, and API keys masked.
 
@@ -42,7 +46,7 @@ Nothing leaves the browser. There is no backend and no remote code.
 ## Limits
 
 - Chrome only reports a request when **both** the page and the API it calls are allowed. An app on localhost calling `https://api.example.com` needs that API allowed (panel → Site access).
-- Deep capture records bodies for calls made by the page itself. Calls from cross-origin iframes and workers are still listed, but without bodies.
+- Deep capture needs Chrome 125 or later (for iframe and worker sessions). Service workers aren't attached; their calls are listed without bodies.
 - Without Deep capture there are no bodies: `webRequest` can't read them, so the Why? trace can't see which response supplied a value.
 - Trace links are inferred by matching distinctive values (tokens, ids, links), labelled *certain* or *likely*. The index is in memory, so it starts empty after the browser or extension restarts.
 - Only `fetch`/XHR are recorded. Page loads, images, and WebSockets are not.

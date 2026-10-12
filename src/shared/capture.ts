@@ -77,8 +77,9 @@ export class DeepCapture {
   // recorded by webRequest. Keyed by tab, method and URL; entries webRequest never reports expire.
   private claims = new Map<string, number[]>();
 
-  event(tabId: number, method: string, p: CdpParams, now = Date.now()): Finished | undefined {
-    const key = `${tabId}:${p.requestId}`;
+  // sessionId identifies an iframe or worker session inside the tab; request ids are only unique per session.
+  event(tabId: number, method: string, p: CdpParams, now = Date.now(), sessionId = ""): Finished | undefined {
+    const key = `${tabId}:${sessionId}:${p.requestId}`;
     const e = this.inflight.get(key);
 
     switch (method) {

@@ -1,13 +1,33 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ApiRequest, RawData } from "../shared/types";
 import { REDACTED, buildReport, compare, exportCurl, findBaseline, headerLines, isFailure, replayable } from "../shared/http";
 import { diagnose } from "../shared/diagnostics";
-import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms, pathOf } from "./ui";
+import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms } from "./ui";
 import type { Draft } from "./Tester";
 import Trace from "./Trace";
+import { GroupView, ListView, TimelineView } from "./Views";
+import { parseShape, shapeDiff } from "../shared/shape";
 
-export default function Traffic({ onReplay }: { onReplay: (d: Draft) => void }) {
+type View = "list" | "group" | "timeline";
+const VIEWS: [View, string][] = [["list", "List"], ["group", "By endpoint"], ["timeline", "Timeline"]];
+
+// Keyboard shortcuts apply only when the panel tab is visible and the user isn't typing in a field.
+const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+const useKeys = (active: boolean, handler: (e: KeyboardEvent) => void) =>
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!typing(e) && !e.ctrlKey && !e.metaKey && !e.altKey) handler(e);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+export default function Traffic({ onReplay, active = true }: { onReplay: (d: Draft) => void; active?: boolean }) {
   const [requests, setRequests] = useState<ApiRequest[]>([]);
+  const [view, setView] = useState<View>("list");
+  const [focusIndex, setFocusIndex] = useState(-1); // -1: no keyboard focus until j/k is pressed
+  const search = useRef<HTMLInputElement>(null);
   const [deepTabs, setDeepTabs] = useState<number[]>([]);
   const [tab, setTab] = useState<chrome.tabs.Tab>();
   const [query, setQuery] = useState("");
@@ -35,12 +55,38 @@ export default function Traffic({ onReplay }: { onReplay: (d: Draft) => void }) 
     };
   }, []);
 
+  const q = query.toLowerCase();
+  const shown = requests.filter(
+    (r) =>
+      (!thisTab || r.tabId === tab?.id) &&
+      (!errorsOnly || isFailure(r)) &&
+      (!q || `${r.method} ${r.url} ${r.status ?? r.error}`.toLowerCase().includes(q))
+  );
+  const failures = shown.filter(isFailure).length;
+  const focus = Math.min(focusIndex, shown.length - 1);
+  // j/k walk the calls in the order the list and timeline show them.
+  const ordered = view === "timeline" ? [...shown.slice(0, 60)].reverse() : shown;
+
+  useKeys(active && !selected, (e) => {
+    if (e.key === "/") {
+      e.preventDefault();
+      search.current?.focus();
+    } else if (e.key === "j" || e.key === "ArrowDown") setFocusIndex(Math.min(focus + 1, ordered.length - 1));
+    else if (e.key === "k" || e.key === "ArrowUp") setFocusIndex(Math.max(focus - 1, 0));
+    else if (e.key === "Enter" && ordered[focus]) setSelected(ordered[focus]);
+    else if (e.key === "e") setErrorsOnly((v) => !v);
+    else if (e.key === "v") setView((v) => VIEWS[(VIEWS.findIndex(([k]) => k === v) + 1) % VIEWS.length][0]);
+    else return;
+    if (e.key !== "/") e.preventDefault();
+  });
+
   if (selected) {
     return (
       <Detail
         key={selected.id} // fresh state (raw data) per request
         r={selected}
         history={requests}
+        active={active}
         onBack={() => setSelected(undefined)}
         onSelect={setSelected}
         onReplay={onReplay}
@@ -59,19 +105,12 @@ export default function Traffic({ onReplay }: { onReplay: (d: Draft) => void }) 
     }
   };
 
-  const q = query.toLowerCase();
-  const shown = requests.filter(
-    (r) =>
-      (!thisTab || r.tabId === tab?.id) &&
-      (!errorsOnly || isFailure(r)) &&
-      (!q || `${r.method} ${r.url} ${r.status ?? r.error}`.toLowerCase().includes(q))
-  );
-  const failures = shown.filter(isFailure).length;
+  const ViewComponent = { list: ListView, group: GroupView, timeline: TimelineView }[view];
 
   return (
     <section>
       <div className="toolbar">
-        <input type="search" placeholder="Filter by URL, method, status…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input ref={search} type="search" placeholder="Filter by URL, method, status… ( / )" value={query} onChange={(e) => setQuery(e.target.value)} />
         <label><input type="checkbox" checked={errorsOnly} onChange={(e) => setErrorsOnly(e.target.checked)} /> Errors</label>
         <label><input type="checkbox" checked={thisTab} onChange={(e) => setThisTab(e.target.checked)} /> This tab</label>
       </div>
@@ -89,44 +128,54 @@ export default function Traffic({ onReplay }: { onReplay: (d: Draft) => void }) 
 
       <SiteAccess tab={tab} />
 
+      <div className="segmented" role="group" aria-label="View">
+        {VIEWS.map(([key, label]) => (
+          <button key={key} aria-pressed={view === key} onClick={() => setView(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {shown.length === 0 ? (
         <p className="muted empty">No API calls yet. Use your app (or reload it) and fetch/XHR requests appear here.</p>
       ) : (
-        <ul className="list">
-          {shown.map((r) => (
-            <li key={r.id}>
-              <button className={`row ${isFailure(r) ? "failed" : ""}`} onClick={() => setSelected(r)} title={r.url}>
-                <StatusPill r={r} />
-                <b>{r.method}</b>
-                <span className="path">{pathOf(r.url)}</span>
-                <span className="muted">{ms(r.durationMs)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <ViewComponent shown={shown} history={requests} focusedId={active ? ordered[focus]?.id : undefined} onOpen={setSelected} />
       )}
+      <p className="muted small keys">
+        Keys: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>/</kbd> filter · <kbd>e</kbd> errors · <kbd>v</kbd> view
+      </p>
     </section>
   );
 }
 
-function Detail({ r, history, onBack, onSelect, onReplay }: {
+function Detail({ r, history, active, onBack, onSelect, onReplay }: {
   r: ApiRequest;
   history: ApiRequest[];
+  active: boolean;
   onBack: () => void;
   onSelect: (r: ApiRequest) => void;
   onReplay: (d: Draft) => void;
 }) {
+  const failed = isFailure(r);
+  const baseline = failed ? findBaseline(r, history) : undefined;
+
   const [raw, setRaw] = useState<RawData>();
+  const [baseRaw, setBaseRaw] = useState<RawData>();
   useEffect(() => {
     let live = true; // ignore a slow lookup that finishes after the user opened another request
-    chrome.storage.session.get(`raw:${r.id}`).then((d) => live && setRaw(d[`raw:${r.id}`] as RawData | undefined));
+    const load = (id: string, set: (v?: RawData) => void) =>
+      chrome.storage.session.get(`raw:${id}`).then((d) => live && set(d[`raw:${id}`] as RawData | undefined));
+    load(r.id, setRaw);
+    if (baseline) load(baseline.id, setBaseRaw);
     return () => {
       live = false;
     };
-  }, [r.id]);
+  }, [r.id, baseline?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- baseline is derived from these ids
 
-  const failed = isFailure(r);
-  const baseline = failed ? findBaseline(r, history) : undefined;
+  // Field-level differences between the two response bodies, when both were captured.
+  const now = parseShape(raw?.responseBody);
+  const before = parseShape(baseRaw?.responseBody);
+  const bodyChanges = now && before ? shapeDiff(now, before) : [];
   const diags = diagnose(r, { baseline, responseBody: raw?.responseBody, raw, history });
   // Raw headers live only in memory; after a browser restart we fall back to the redacted copy.
   const sent = raw?.requestHeaders ?? r.requestHeaders ?? {};
@@ -146,6 +195,14 @@ function Detail({ r, history, onBack, onSelect, onReplay }: {
     onReplay({ method: r.method, url, headers: headerLines(headers), body: raw?.requestBody ?? "", origin: sent.origin ?? "", note: notes.join(" ") });
   };
 
+  useKeys(active, (e) => {
+    if (e.key === "Escape") onBack();
+    else if (e.key === "r") replay();
+    else if (e.key === "c") void navigator.clipboard.writeText(buildReport(r, diags, baseline, raw)).catch(() => {});
+    else return;
+    e.preventDefault();
+  });
+
   return (
     <section className="detail">
       <button className="link" onClick={onBack}>← All requests</button>
@@ -164,7 +221,9 @@ function Detail({ r, history, onBack, onSelect, onReplay }: {
         <CopyButton label="Copy cURL" text={() => exportCurl(r.method, url, { ...sentHeaders, ...(sent.origin && { origin: sent.origin }) }, raw?.requestBody)} />
         <CopyButton label="Copy report" text={() => buildReport(r, diags, baseline, raw)} />
       </div>
-      <p className="muted small">Copied text has tokens, cookies, and passwords masked.</p>
+      <p className="muted small">
+        Copied text has tokens, cookies, and passwords masked. Keys: <kbd>Esc</kbd> back · <kbd>r</kbd> replay · <kbd>c</kbd> copy report
+      </p>
 
       <h3>Diagnosis</h3>
       <Diagnostics items={diags} />
@@ -187,6 +246,13 @@ function Detail({ r, history, onBack, onSelect, onReplay }: {
                       <th>{row.field}</th>
                       <td>{row.failed}</td>
                       <td>{row.baseline}</td>
+                    </tr>
+                  ))}
+                  {bodyChanges.map((c) => (
+                    <tr key={`body ${c.path}`}>
+                      <th>body {c.path}</th>
+                      <td>{c.now}</td>
+                      <td>{c.before}</td>
                     </tr>
                   ))}
                 </tbody>

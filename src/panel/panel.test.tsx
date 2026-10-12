@@ -121,3 +121,45 @@ describe("Why? trace", () => {
     expect(within(culpritNode).getByText(/user was null → GET \/api\/users\/undefined/)).toBeTruthy();
   });
 });
+
+describe("views and keys", () => {
+  const seed = () => {
+    fake.data.local.requests = [
+      req({ url: "http://localhost:3000/api/users/7", status: 500, startedAt: 3 }),
+      req({ url: "http://localhost:3000/api/users/42", status: 200, startedAt: 2 }),
+      req({ url: "http://localhost:3000/api/health", status: 200, startedAt: 1 })
+    ];
+  };
+
+  it("groups calls by endpoint with a failure rate, worst first", async () => {
+    seed();
+    render(<Traffic onReplay={() => {}} />);
+    await screen.findByText("/api/users/7");
+    fireEvent.click(screen.getByText("By endpoint"));
+    const groups = [...document.querySelectorAll(".group-row")].map((g) => g.textContent);
+    expect(groups).toEqual(["50%GET/api/users/:id2× · —", "0%GET/api/health1× · —"]);
+  });
+
+  it("moves with j/k and opens with Enter", async () => {
+    seed();
+    render(<Traffic onReplay={() => {}} />);
+    await screen.findByText("/api/users/7");
+    expect(rowFor("/api/users/7").className).not.toContain("focused"); // nothing focused before the first key
+    fireEvent.keyDown(window, { key: "j" });
+    fireEvent.keyDown(window, { key: "j" });
+    expect(rowFor("/api/users/42").className).toContain("focused");
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(await screen.findByText("← All requests")).toBeTruthy();
+    expect(screen.getByText("http://localhost:3000/api/users/42")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(await screen.findByText("List")).toBeTruthy();
+  });
+
+  it("ignores shortcuts while typing in the filter", async () => {
+    seed();
+    render(<Traffic onReplay={() => {}} />);
+    const filter = await screen.findByPlaceholderText(/Filter by URL/);
+    fireEvent.keyDown(filter, { key: "e" });
+    expect((screen.getByLabelText(/Errors/) as HTMLInputElement).checked).toBe(false);
+  });
+});

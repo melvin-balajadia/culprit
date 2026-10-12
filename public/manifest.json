@@ -3,7 +3,7 @@
   "name": "Culprit",
   "version": "0.1.0",
   "description": "Find the API call that really broke it: live API monitor, root-cause diagnostics, compare with last success, and a built-in tester.",
-  "minimum_chrome_version": "116",
+  "minimum_chrome_version": "125",
   "permissions": [
     "webRequest",
     "storage",

@@ -147,18 +147,30 @@ chrome.webRequest.onErrorOccurred.addListener((d) => finish(d, { error: d.error 
 const deep = new DeepCapture();
 
 
+// Record network events for a page, and auto-attach to its iframes and workers (flat child sessions) so
+// their calls get bodies too. Children report back through Target.attachedToTarget, handled below.
+async function watchNetwork(target: chrome.debugger.DebuggerSession) {
+  await chrome.debugger.sendCommand(target, "Network.enable", { maxPostDataSize: BODY_LIMIT });
+  await chrome.debugger
+    .sendCommand(target, "Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
+    .catch(() => {}); // best effort: without it, iframe and worker calls are still listed via webRequest
+}
+
 async function setDeep(tabId: number, on: boolean) {
   await ready; // a just-woken worker must load the saved set first, or it would re-add this tab afterwards
   const target = { tabId };
   if (on) {
     await chrome.debugger.attach(target, "1.3");
+    // Marked before enabling: auto-attach reports existing iframes and workers while it is being set up,
+    // and the event handler ignores tabs that aren't in deepTabs.
+    deepTabs.add(tabId);
     try {
-      await chrome.debugger.sendCommand(target, "Network.enable", { maxPostDataSize: BODY_LIMIT });
+      await watchNetwork(target);
     } catch (err) {
+      deepTabs.delete(tabId);
       await chrome.debugger.detach(target).catch(() => {}); // don't leave Chrome's debugging banner up for nothing
       throw err;
     }
-    deepTabs.add(tabId);
   } else {
     deepTabs.delete(tabId);
     deep.forgetTab(tabId);
@@ -179,7 +191,12 @@ chrome.debugger.onDetach.addListener(({ tabId }) => {
 chrome.debugger.onEvent.addListener(async (source, method, params) => {
   const tabId = source.tabId;
   if (tabId === undefined || !params || !deepTabs.has(tabId)) return;
-  const done = deep.event(tabId, method, params as CdpParams);
+  if (method === "Target.attachedToTarget") {
+    const { sessionId } = params as { sessionId: string };
+    void watchNetwork({ tabId, sessionId }).catch(() => {}); // the frame or worker may already be gone
+    return;
+  }
+  const done = deep.event(tabId, method, params as CdpParams, Date.now(), source.sessionId);
   if (!done) return;
   let body: string | undefined;
   if (done.wantsBody) {
