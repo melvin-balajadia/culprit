@@ -108,10 +108,13 @@ chrome.webRequest.onSendHeaders.addListener(
   ["requestHeaders", "extraHeaders"]
 );
 
-type Details = { requestId: string; tabId: number; url: string; method: string; timeStamp: number };
+type Details = { requestId: string; tabId: number; url: string; method: string; timeStamp: number; initiator?: string };
+
+// Our own requests (tester, chain re-runs) are never history, whichever context sends them.
+const OWN_ORIGIN = `chrome-extension://${chrome.runtime.id}`;
 
 function finish(d: Details, extra: Partial<ApiRequest>) {
-  if (d.tabId < 0) return; // extension pages, including our own tester
+  if (d.tabId < 0 || d.initiator === OWN_ORIGIN) return;
   const p = pending.get(d.requestId);
   pending.delete(d.requestId);
   void ready.then(() => {

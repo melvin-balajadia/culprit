@@ -46,7 +46,11 @@ To open the panel, click the toolbar icon or press **Alt+Shift+N**. After a rebu
 | `sidePanel`, `activeTab` | The panel UI; activeTab lets the panel read the current tab's site. |
 | `storage` | History (`local`, metadata only, last 100 calls, header secrets masked). Raw headers and bodies go in `session` storage: memory only, wiped when the browser closes or history is cleared. |
 
-Nothing leaves the browser. There is no backend and no remote code.
+Nothing leaves the browser. There is no backend and no remote code. Details: [PRIVACY.md](PRIVACY.md).
+
+## Publishing
+
+[store/LISTING.md](store/LISTING.md) has the Chrome Web Store listing text, the permission justifications for the review form, and packaging steps. Screenshots (1280×800) are in `store/screenshots/`.
 
 ## Limits
 
