@@ -2,6 +2,8 @@
 
 **Find the API call that really broke it.** A Chrome side-panel extension that shows *why* your app's API calls fail, not just that they did.
 
+How it was designed and built (problem, architecture, decisions, results): [docs/CASE_STUDY.md](docs/CASE_STUDY.md).
+
 - **Why? (root-cause trace)**: with Deep capture on, Culprit notices when a value from one response (a token, an id, a link) is used by a later request, and links the two. Open a failed call to see the chain of calls that led to it, with the **culprit** marked: the refresh that failed before your 401, or the response that returned `null` before your request to `/users/undefined`. Links store field paths only, never values.
 - **Re-run chain**: from a traced call, run it again together with the calls that fed it. Each step uses fresh values from the steps before it (a new login's token, the id the new response returned), so an expired session replays as a working one. Edit any step first and the change flows to the steps after it. Calls that change data (POST, PUT, PATCH, DELETE) ask for confirmation.
 - **Take the chain with you**: copy it as a **Postman collection** (linked values become `{{variables}}`, with the scripts that set them already written; import with Import → Raw text) or as a **Vitest regression test** that replays the chain and expects the failing call to pass (`API_BASE_URL=… npx vitest run file`). Secrets become variables or `process.env.*` placeholders.
