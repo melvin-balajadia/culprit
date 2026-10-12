@@ -123,3 +123,16 @@ summary { cursor: pointer; color: var(--muted); }
 .chips button { border: 0; padding: 0 4px; background: none; }
 .field .full { display: block; width: 100%; margin-top: 2px; }
 .brand { display: flex; align-items: center; gap: 6px; }
+
+/* Why? trace: a vertical chain, oldest call first */
+.trace { list-style: none; margin: 4px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: grid; gap: 8px; }
+.trace li { position: relative; padding-left: 8px; }
+.trace li::before { content: ""; position: absolute; left: -16px; top: 9px; width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.trace li.culprit::before { background: var(--fail); }
+.trace li.self::before { background: var(--fg); }
+.trace .node { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; padding: 2px 0; text-align: left; background: none; }
+.trace .node:disabled { cursor: default; opacity: 1; }
+.trace .edge { color: var(--muted); padding-left: 2px; overflow-wrap: anywhere; }
+.badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 0 6px; border-radius: 8px; background: var(--fail); color: #fff; }
+.badge.self { background: var(--muted); }
+code { font: 11px ui-monospace, monospace; }

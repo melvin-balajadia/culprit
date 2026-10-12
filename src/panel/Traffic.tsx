@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import type { ApiRequest, RawData } from "../shared/types";
 import { REDACTED, buildReport, compare, exportCurl, findBaseline, headerLines, isFailure, replayable } from "../shared/http";
 import { diagnose } from "../shared/diagnostics";
-import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms } from "./ui";
+import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms, pathOf } from "./ui";
 import type { Draft } from "./Tester";
+import Trace from "./Trace";
 
 export default function Traffic({ onReplay }: { onReplay: (d: Draft) => void }) {
   const [requests, setRequests] = useState<ApiRequest[]>([]);
@@ -108,15 +109,6 @@ export default function Traffic({ onReplay }: { onReplay: (d: Draft) => void }) 
   );
 }
 
-function pathOf(url: string) {
-  try {
-    const u = new URL(url);
-    return `${u.pathname}${u.search}`;
-  } catch {
-    return url;
-  }
-}
-
 function Detail({ r, history, onBack, onSelect, onReplay }: {
   r: ApiRequest;
   history: ApiRequest[];
@@ -135,7 +127,7 @@ function Detail({ r, history, onBack, onSelect, onReplay }: {
 
   const failed = isFailure(r);
   const baseline = failed ? findBaseline(r, history) : undefined;
-  const diags = diagnose(r, baseline, raw?.responseBody);
+  const diags = diagnose(r, { baseline, responseBody: raw?.responseBody, raw, history });
   // Raw headers live only in memory; after a browser restart we fall back to the redacted copy.
   const sent = raw?.requestHeaders ?? r.requestHeaders ?? {};
   const sentHeaders = replayable(sent);
@@ -164,6 +156,7 @@ function Detail({ r, history, onBack, onSelect, onReplay }: {
         {new Date(r.startedAt).toLocaleTimeString()} · {ms(r.durationMs)}
         {r.error ? ` · ${r.error}` : r.statusText ? ` · ${r.statusText}` : ""}
         {r.deep ? " · deep capture" : ""}
+        {r.callSite && <> · from <code>{r.callSite}</code></>}
       </p>
 
       <div className="toolbar">
@@ -175,6 +168,9 @@ function Detail({ r, history, onBack, onSelect, onReplay }: {
 
       <h3>Diagnosis</h3>
       <Diagnostics items={diags} />
+
+      <h3>Why?</h3>
+      <Trace r={r} history={history} onSelect={onSelect} />
 
       {failed && (
         <>

@@ -1,5 +1,6 @@
-import type { ApiRequest, Diagnostic } from "./types";
+import type { ApiRequest, Diagnostic, RawData } from "./types";
 import { compare, isFailure } from "./http";
+import { traceBack } from "./lineage";
 
 type Rule = [Diagnostic["severity"], string, string, string];
 const d = ([severity, title, explanation, nextStep]: Rule): Diagnostic => ({ severity, title, explanation, nextStep });
@@ -41,10 +42,61 @@ const NETWORK: [RegExp, Rule][] = [
 ];
 const NETWORK_OTHER: Rule = ["error", "Network failure", "No HTTP response was received.", "Check connectivity, the URL, and the browser console."];
 
-export function diagnose(r: ApiRequest, baseline?: ApiRequest, responseBody?: string): Diagnostic[] {
+export interface DiagnoseContext {
+  baseline?: ApiRequest; // last success for the same endpoint
+  responseBody?: string;
+  raw?: RawData; // session-only data: lets us read the token that was actually sent
+  history?: ApiRequest[]; // for the cause trace
+}
+
+// "/users/undefined", "?id=null": the client built the URL from a value it didn't have.
+const MISSING_IN_URL = /\/(undefined|null|NaN|%5Bobject%20Object%5D)(?=\/|$|\?)|[?&][^=&]+=(undefined|null|NaN)(?=&|$)/;
+
+// The claims of a JWT (not its signature). Decoding is local and never leaves memory.
+export function jwtClaims(token: string): { exp?: number; iat?: number } | undefined {
+  const parts = token.replace(/^Bearer\s+/i, "").split(".");
+  if (parts.length !== 3) return;
+  try {
+    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return;
+  }
+}
+
+const ago = (ms: number) => (ms < 90_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.round(ms / 60_000)} min`);
+const where = (x: ApiRequest) => {
+  try {
+    return `${x.method} ${new URL(x.url).pathname}`;
+  } catch {
+    return `${x.method} ${x.url}`;
+  }
+};
+
+export function diagnose(r: ApiRequest, ctx: DiagnoseContext = {}): Diagnostic[] {
+  const { baseline, responseBody, raw, history } = ctx;
   const out: Diagnostic[] = [];
   const res = r.responseHeaders ?? {};
   const sent = r.requestHeaders;
+
+  // Root cause first: a failure that an earlier call caused.
+  if (history && isFailure(r)) {
+    const { culprit, reason } = traceBack(r, history);
+    if (culprit && culprit.id !== r.id && reason) {
+      out.push(d(["error", `Likely culprit: ${where(culprit)}`, reason, "Fix that call first; this one inherited its problem. The Why? section shows the chain."]));
+    }
+  }
+
+  const missing = r.url.match(MISSING_IN_URL);
+  if (missing) {
+    const value = decodeURIComponent(missing[1] ?? missing[2]);
+    out.push(d(["error", "URL built from a missing value", `The URL contains "${value}", so the code that built it had no value to put there.`, "Find where this URL is built (see the call site) and why its input was empty. Why? shows the response that returned null, when it was captured."]));
+  }
+
+  const token = raw?.requestHeaders?.authorization;
+  const exp = token ? jwtClaims(token)?.exp : undefined;
+  if (exp && isFailure(r) && exp * 1000 < r.startedAt) {
+    out.push(d(["warning", "Token expired", `The Bearer token sent expired ${ago(r.startedAt - exp * 1000)} before this call.`, "Refresh the token before calling, or check why the refresh flow didn't run."]));
+  }
 
   if (r.corsError) {
     out.push(d(["error", "Blocked by CORS", `The browser blocked the response (${r.corsError}).`, "Allow this origin on the server: Access-Control-Allow-Origin, plus the OPTIONS preflight for non-simple requests."]));

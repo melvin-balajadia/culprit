@@ -6,6 +6,15 @@ const MAX_RENDER = 200_000;
 
 export const ms = (n?: number) => (n === undefined ? "—" : `${n} ms`);
 
+export function pathOf(url: string) {
+  try {
+    const u = new URL(url);
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
 export function StatusPill({ r }: { r: ApiRequest }) {
   const s = r.status ?? 0;
   const kind = r.error ? (isCancelled(r) ? "muted" : "fail") : s >= 500 ? "fail" : s >= 400 ? "warn" : "ok";

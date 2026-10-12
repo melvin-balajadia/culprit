@@ -19,6 +19,29 @@ export interface CdpParams {
   errorText?: string;
   canceled?: boolean;
   corsErrorStatus?: { corsError?: string };
+  initiator?: { type: string; stack?: CdpStack };
+}
+
+interface CdpStack {
+  callFrames: { functionName: string; url: string; lineNumber: number }[];
+  parent?: CdpStack; // the async caller, e.g. the code that awaited the fetch
+}
+
+// The first frame in the app's own code (skipping libraries such as axios or fetch wrappers in node_modules),
+// as "src/api/orders.ts:42 loadOrders". Dev servers like Vite serve readable source paths.
+export function callSiteOf(stack?: CdpStack): string | undefined {
+  const frames = [];
+  for (let s = stack, i = 0; s && i < 10; s = s.parent, i++) frames.push(...s.callFrames);
+  const own = frames.filter((f) => f.url && !/^chrome-extension:/.test(f.url));
+  const frame = own.find((f) => !/\/node_modules\//.test(f.url)) ?? own[0];
+  if (!frame) return;
+  let file = frame.url;
+  try {
+    file = new URL(frame.url).pathname.replace(/^\//, "") || "inline script"; // a <script> in the page itself
+  } catch {
+    // keep the raw url
+  }
+  return `${file}:${frame.lineNumber + 1}${frame.functionName ? ` ${frame.functionName}` : ""}`;
 }
 
 interface Entry {
@@ -33,6 +56,7 @@ interface Entry {
   status?: number;
   statusText?: string;
   responseHeaders?: Headers;
+  callSite?: string;
 }
 
 // A request the debugger saw finish. background.ts fetches the response body if wanted, then calls toCapture.
@@ -74,7 +98,8 @@ export class DeepCapture {
           start: e?.start ?? p.timestamp,
           wall: e?.wall ?? wall,
           headers: { ...toHeaders(Object.entries(p.request.headers ?? {})), ...this.early.get(key) },
-          body: p.request.postData
+          body: p.request.postData,
+          callSite: e?.callSite ?? callSiteOf(p.initiator?.stack)
         });
         this.early.delete(key);
         return;
@@ -160,6 +185,7 @@ export function toCapture(f: Finished, responseBody?: string): { record: ApiRequ
       requestHeaders: redactHeaders(e.headers),
       responseHeaders: e.responseHeaders && redactHeaders(e.responseHeaders),
       deep: true,
+      callSite: e.callSite,
       ...f.extra
     },
     raw: { url: e.url, requestHeaders: e.headers, requestBody: clip(e.body), responseBody: clip(responseBody) }

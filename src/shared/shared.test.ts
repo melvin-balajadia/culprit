@@ -27,7 +27,7 @@ const req = (p: Partial<ApiRequest>): ApiRequest => ({
   startedAt: 0,
   ...p
 });
-const titles = (r: ApiRequest, base?: ApiRequest) => diagnose(r, base).map((d) => d.title);
+const titles = (r: ApiRequest, base?: ApiRequest) => diagnose(r, { baseline: base }).map((d) => d.title);
 
 describe("diagnose", () => {
   it.each([
@@ -77,7 +77,7 @@ describe("diagnose", () => {
   it("names headers the last success sent but this failure did not", () => {
     const ok = req({ status: 200, requestHeaders: { authorization: REDACTED, "x-request-id": "a" } });
     const bad = req({ status: 401, requestHeaders: { "x-request-id": "b" } });
-    const missing = diagnose(bad, ok).find((d) => d.title === "Headers missing vs. last success");
+    const missing = diagnose(bad, { baseline: ok }).find((d) => d.title === "Headers missing vs. last success");
     expect(missing?.explanation).toContain("authorization");
     expect(missing?.explanation).not.toContain("x-request-id"); // volatile, ignored
   });
@@ -120,7 +120,7 @@ describe("redaction", () => {
   it("keeps secrets out of the shareable report", () => {
     const failed = req({ status: 401, url: "https://api.test/me?token=abc123", requestHeaders: redactHeaders({ authorization: "Bearer abc123" }) });
     const ok = req({ status: 200, url: "https://api.test/me?token=zzz999", requestHeaders: redactHeaders({ authorization: "Bearer zzz999" }) });
-    const report = buildReport(failed, diagnose(failed, ok), ok, {
+    const report = buildReport(failed, diagnose(failed, { baseline: ok }), ok, {
       requestHeaders: { authorization: "Bearer abc123" },
       requestBody: '{"password":"hunter2"}',
       responseBody: '{"error":"bad token","token":"abc123"}'
@@ -148,7 +148,7 @@ describe("helpers", () => {
 describe("server-side CORS rejection", () => {
   it("names a CORS rejection hidden behind a 500", () => {
     const r = req({ status: 500, requestHeaders: { origin: "chrome-extension://abc" } });
-    const diag = diagnose(r, undefined, '{"message":"Internal Server Error","error":"Error: Not allowed by CORS"}')[0];
+    const diag = diagnose(r, { responseBody: '{"message":"Internal Server Error","error":"Error: Not allowed by CORS"}' })[0];
     expect(diag.title).toBe("Rejected by the server's CORS check");
     expect(diag.explanation).toContain("chrome-extension://abc");
     expect(titles(req({ status: 500 }))).not.toContain("Rejected by the server's CORS check");
@@ -168,8 +168,8 @@ describe("review fixes", () => {
   it("only flags real server CORS rejections", () => {
     const cors = "Rejected by the server's CORS check";
     expect(titles(req({ status: 404 }))).not.toContain(cors);
-    expect(diagnose(req({ status: 404 }), undefined, '{"error":"Cannot GET /cors-test"}').map((d) => d.title)).not.toContain(cors);
-    expect(diagnose(req({ status: 403 }), undefined, "Invalid CORS request").map((d) => d.title)).toContain(cors);
+    expect(diagnose(req({ status: 404 }), { responseBody: '{"error":"Cannot GET /cors-test"}' }).map((d) => d.title)).not.toContain(cors);
+    expect(diagnose(req({ status: 403 }), { responseBody: "Invalid CORS request" }).map((d) => d.title)).toContain(cors);
   });
 
   it("does not claim missing credentials for tester calls, which send cookies implicitly", () => {

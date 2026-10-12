@@ -183,7 +183,7 @@ export default function Tester({ draft }: { draft?: Draft }) {
             <StatusPill r={outcome.r} /> {outcome.r.statusText || outcome.r.error}
             <span className="muted"> · {ms(outcome.r.durationMs)}{outcome.result ? ` · ${outcome.result.size.toLocaleString()} bytes` : ""}</span>
           </h2>
-          <Diagnostics items={diagnose(outcome.r, undefined, outcome.result?.body)} />
+          <Diagnostics items={diagnose(outcome.r, { responseBody: outcome.result?.body })} />
           {outcome.result && (
             <>
               <h3>Response body</h3>

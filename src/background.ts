@@ -1,6 +1,7 @@
 import type { ApiRequest, Headers, RawData } from "./shared/types";
 import { isFailure, redactHeaders, redactUrl, toHeaders } from "./shared/http";
 import { BODY_LIMIT, DeepCapture, bodyText, toCapture, type CdpParams } from "./shared/capture";
+import { LineageIndex } from "./shared/lineage";
 
 const MAX_REQUESTS = 100;
 const FLUSH_MS = 250;
@@ -47,8 +48,12 @@ function save(r: ApiRequest, raw?: RawData) {
   }, FLUSH_MS);
 }
 
+// Which earlier response supplied each value a request used. Memory only; holds fingerprints, not values.
+const lineage = new LineageIndex();
+
 function clearHistory() {
   buffer = [];
+  lineage.clear();
   return enqueue(() => chrome.storage.local.set({ requests: [] }));
 }
 
@@ -107,19 +112,20 @@ function finish(d: Details, extra: Partial<ApiRequest>) {
   pending.delete(d.requestId);
   void ready.then(() => {
     if (deepTabs.has(d.tabId) && deep.consumeClaim(d.tabId, d.method, d.url)) return;
-    save(
-      {
-        id: `${d.requestId}-${d.timeStamp}`,
-        tabId: d.tabId,
-        url: redactUrl(d.url), // the raw URL (tokens in the query) only lives in session memory
-        method: d.method,
-        startedAt: p?.start ?? d.timeStamp,
-        durationMs: p ? Math.round(d.timeStamp - p.start) : undefined,
-        requestHeaders: p?.headers && redactHeaders(p.headers),
-        ...extra
-      },
-      { url: d.url, requestHeaders: p?.headers }
-    );
+    const record: ApiRequest = {
+      id: `${d.requestId}-${d.timeStamp}`,
+      tabId: d.tabId,
+      url: redactUrl(d.url), // the raw URL (tokens in the query) only lives in session memory
+      method: d.method,
+      startedAt: p?.start ?? d.timeStamp,
+      durationMs: p ? Math.round(d.timeStamp - p.start) : undefined,
+      requestHeaders: p?.headers && redactHeaders(p.headers),
+      ...extra
+    };
+    const raw: RawData = { url: d.url, requestHeaders: p?.headers };
+    // No bodies here, so these calls can use values from deep-captured responses but can't supply any.
+    record.links = lineage.link(record, raw);
+    save(record, raw);
   });
 }
 
@@ -185,6 +191,8 @@ chrome.debugger.onEvent.addListener(async (source, method, params) => {
     }
   }
   const { record, raw } = toCapture(done, body);
+  record.links = lineage.link(record, raw);
+  lineage.add(record, raw, done.entry.responseHeaders);
   save(record, raw);
 });
 

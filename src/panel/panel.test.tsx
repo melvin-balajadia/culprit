@@ -104,3 +104,20 @@ describe("Tester", () => {
     expect(screen.queryByText("Confirm DELETE")).toBeNull();
   });
 });
+
+describe("Why? trace", () => {
+  it("marks the culprit in the chain and leads the diagnosis with it", async () => {
+    fake.data.local.requests = [
+      req({ url: "http://localhost:3000/api/users/undefined", status: 404, startedAt: 2, links: [{ from: "p", fromPath: "response.user", to: "path[2]", confidence: "likely", missing: true }] }),
+      { ...req({ url: "http://localhost:3000/api/profile", status: 200, startedAt: 1 }), id: "p" }
+    ];
+    render(<Traffic onReplay={() => {}} />);
+    await screen.findByText("/api/users/undefined");
+    fireEvent.click(rowFor("/api/users/undefined"));
+
+    expect(await screen.findByText("Likely culprit: GET /api/profile")).toBeTruthy();
+    const culpritNode = screen.getByText("Culprit").closest("li")!;
+    expect(within(culpritNode).getByText("/api/profile")).toBeTruthy();
+    expect(within(culpritNode).getByText(/user was null → GET \/api\/users\/undefined/)).toBeTruthy();
+  });
+});

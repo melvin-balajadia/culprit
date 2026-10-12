@@ -31,6 +31,23 @@ const cases = {
   "Login (CORS allowlist)": () => fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user_username: "ada", user_password: "hunter2" }) }),
   "Server not running":  () => fetch("http://localhost:4999/api/users"),
   "Cancelled":           () => { const c = new AbortController(); const p = fetch("/api/slow", { signal: c.signal }); setTimeout(() => c.abort(), 100); return p; },
+  // Chains: turn on Deep capture first, then open the last call and look at "Why?".
+  "Chain: login → me → orders (OK)": async () => {
+    const login = await (await fetch("/api/session/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "ada" }) })).json();
+    const auth = { Authorization: "Bearer " + login.access_token };
+    const me = await (await fetch("/api/session/me", { headers: auth })).json();
+    await fetch("/api/session/users/" + me.user.id + "/orders", { headers: auth });
+  },
+  "Chain: expired session": async () => {
+    const login = await (await fetch("/api/session/login?ttl=1", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "ada" }) })).json();
+    await new Promise((r) => setTimeout(r, 1500));
+    await fetch("/api/session/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refresh_token: login.refresh_token }) });
+    await fetch("/api/session/users/" + login.user.id + "/orders", { headers: { Authorization: "Bearer " + login.access_token } });
+  },
+  "Chain: missing user": async () => {
+    const profile = await (await fetch("/api/profile")).json();
+    await fetch("/api/users/" + profile.user?.id);
+  },
 };
 for (const [name, run] of Object.entries(cases)) {
   const btn = document.createElement("button");
@@ -50,6 +67,19 @@ const routes = {
   "GET /api/report": [500, { error: "TypeError: cannot read properties of undefined (reading 'total')" }],
   "GET /api/health": [503, { status: "starting" }],
 };
+
+// Session chain: an unsigned JWT with an expiry, so token flow and expiry can be traced.
+const b64url = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+const issue = (ttl) => [b64url({ alg: "none", typ: "JWT" }), b64url({ sub: "4821", exp: Math.floor(Date.now() / 1000) + ttl }), "demo"].join(".");
+const validToken = (req) => {
+  try {
+    const token = (req.headers.authorization ?? "").replace(/^Bearer\s+/, "");
+    return JSON.parse(Buffer.from(token.split(".")[1], "base64url")).exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+};
+const unauthorized = { error: "token expired or missing" };
 
 http
   .createServer(async (req, res) => {
@@ -73,6 +103,17 @@ http
       if (origin && origin !== `http://localhost:${PORT}`) return send(500, { message: "Internal Server Error", error: "Error: Not allowed by CORS" });
       return send(200, { token: "demo-token" }, origin ? { "access-control-allow-origin": origin } : {});
     }
+
+    if (path === "/api/session/login" && req.method === "POST") {
+      const ttl = Number(new URL(req.url, "http://demo").searchParams.get("ttl")) || 3600;
+      return send(200, { access_token: issue(ttl), refresh_token: `rt_${crypto.randomUUID()}`, user: { id: 4821 } });
+    }
+    if (path === "/api/session/refresh") return send(500, { error: "refresh store unavailable" });
+    if (path === "/api/session/me") return validToken(req) ? send(200, { user: { id: 4821, name: "Ada" } }) : send(401, unauthorized);
+    if (/^\/api\/session\/users\/\d+\/orders$/.test(path)) {
+      return validToken(req) ? send(200, { orders: [{ id: 9001, total: 42 }] }) : send(401, unauthorized);
+    }
+    if (path === "/api/profile") return send(200, { user: null });
 
     const route = routes[`${req.method} ${path}`];
     if (!route) return send(404, { error: `no route ${req.method} ${path}` });
