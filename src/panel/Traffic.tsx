@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ApiRequest, RawData } from "../shared/types";
 import { REDACTED, buildReport, compare, exportCurl, findBaseline, headerLines, isFailure, replayable } from "../shared/http";
 import { diagnose } from "../shared/diagnostics";
@@ -8,21 +8,42 @@ import Trace from "./Trace";
 import { GroupView, ListView, TimelineView } from "./Views";
 import ChainRunner from "./ChainRunner";
 import { parseShape, shapeDiff } from "../shared/shape";
+import { traceBack } from "../shared/lineage";
+import { toHar } from "../shared/export";
+
+async function exportHar(records: ApiRequest[]) {
+  const raws = Object.fromEntries(
+    await Promise.all(records.map(async (r) => [r.id, (await chrome.storage.session.get(`raw:${r.id}`))[`raw:${r.id}`] as RawData | undefined]))
+  );
+  const blob = new Blob([toHar(records, raws, chrome.runtime.getManifest().version)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `culprit-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.har`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
 
 type View = "list" | "group" | "timeline";
 const VIEWS: [View, string][] = [["list", "List"], ["group", "By endpoint"], ["timeline", "Timeline"]];
 
 // Keyboard shortcuts apply only when the panel tab is visible and the user isn't typing in a field.
 const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
-const useKeys = (active: boolean, handler: (e: KeyboardEvent) => void) =>
+function useKeys(active: boolean, handler: (e: KeyboardEvent) => void) {
+  // The listener always calls the latest handler. Updated during commit, so a key pressed right after new
+  // data renders never acts on the previous list (useEffect would run a moment after the paint).
+  const latest = useRef(handler);
+  useLayoutEffect(() => {
+    latest.current = handler;
+  });
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!typing(e) && !e.ctrlKey && !e.metaKey && !e.altKey) handler(e);
+      if (!typing(e) && !e.ctrlKey && !e.metaKey && !e.altKey) latest.current(e);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [active]);
+}
 
 export default function Traffic({ onReplay, active = true }: { onReplay: (d: Draft) => void; active?: boolean }) {
   const [requests, setRequests] = useState<ApiRequest[]>([]);
@@ -123,6 +144,9 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
         </button>
         {/* Cleared by the background so it can't race with a capture being written. */}
         <button onClick={() => chrome.runtime.sendMessage({ type: "clear" }).catch(() => {})}>Clear</button>
+        <button disabled={!shown.length} onClick={() => void exportHar(shown)} title="Download what the list shows as a HAR file, masked like Copy report">
+          Export HAR
+        </button>
         <span className="muted grow">{shown.length} shown{failures ? ` · ${failures} failed` : ""}</span>
       </div>
       {deepError && <p className="warn-text">{deepError}</p>}
@@ -182,6 +206,7 @@ function Detail({ r, history, active, onBack, onSelect, onReplay }: {
   const sent = raw?.requestHeaders ?? r.requestHeaders ?? {};
   const sentHeaders = replayable(sent);
   const url = raw?.url ?? r.url;
+  const report = () => buildReport(r, diags, baseline, raw, traceBack(r, history));
 
   const replay = () => {
     // Never send the literal "REDACTED": leave masked headers out and say which ones to re-enter.
@@ -199,7 +224,7 @@ function Detail({ r, history, active, onBack, onSelect, onReplay }: {
   useKeys(active, (e) => {
     if (e.key === "Escape") onBack();
     else if (e.key === "r") replay();
-    else if (e.key === "c") void navigator.clipboard.writeText(buildReport(r, diags, baseline, raw)).catch(() => {});
+    else if (e.key === "c") void navigator.clipboard.writeText(report()).catch(() => {});
     else return;
     e.preventDefault();
   });
@@ -220,7 +245,7 @@ function Detail({ r, history, active, onBack, onSelect, onReplay }: {
       <div className="toolbar">
         <button onClick={replay}>Replay in tester</button>
         <CopyButton label="Copy cURL" text={() => exportCurl(r.method, url, { ...sentHeaders, ...(sent.origin && { origin: sent.origin }) }, raw?.requestBody)} />
-        <CopyButton label="Copy report" text={() => buildReport(r, diags, baseline, raw)} />
+        <CopyButton label="Copy report" text={() => report()} />
       </div>
       <p className="muted small">
         Copied text has tokens, cookies, and passwords masked. Keys: <kbd>Esc</kbd> back · <kbd>r</kbd> replay · <kbd>c</kbd> copy report

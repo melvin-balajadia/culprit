@@ -5,6 +5,8 @@ import {
   REDACTED,
   compare,
   exportCurl,
+  fillVars,
+  parseVars,
   buildReport,
   endpointKey,
   findBaseline,
@@ -213,5 +215,26 @@ describe("second review fixes", () => {
     const a = req({ status: 500, requestHeaders: { accept: "*/*" } });
     const b = req({ status: 200, requestHeaders: { accept: "*/*", "sec-fetch-mode": "cors", "accept-encoding": "gzip", cookie: REDACTED } });
     expect(compare(a, b).map((row) => row.field)).toEqual(["status", "request header cookie"]);
+  });
+});
+
+describe("tester variables", () => {
+  it("parses name=value lines and fills {{name}}, reporting unknown ones", () => {
+    const vars = parseVars("baseUrl = http://localhost:3000\ntoken=a=b\nbroken line");
+    expect(vars).toEqual({ baseUrl: "http://localhost:3000", token: "a=b" });
+    expect(fillVars("{{baseUrl}}/me?t={{ token }}", vars)).toEqual({ text: "http://localhost:3000/me?t=a=b", missing: [] });
+    expect(fillVars("{{nope}}/x", vars)).toEqual({ text: "{{nope}}/x", missing: ["nope"] });
+  });
+});
+
+describe("report with a chain", () => {
+  it("lists the chain oldest first and marks the culprit", () => {
+    const login = req({ method: "POST", url: "https://api.test/login?token=abc", status: 200 });
+    const refresh = req({ method: "POST", url: "https://api.test/refresh", status: 500, statusText: "Internal Server Error" });
+    const orders = req({ url: "https://api.test/orders", status: 401, callSite: "src/api.ts:12 loadOrders" });
+    const report = buildReport(orders, [], undefined, undefined, { chain: [login, refresh, orders], culprit: refresh });
+    expect(report).toContain("**Called from:** `src/api.ts:12 loadOrders`");
+    expect(report).toContain("1. POST /login → 200\n2. POST /refresh → 500 Internal Server Error ← culprit\n3. GET /orders → 401 ← this call");
+    expect(report).not.toContain("abc");
   });
 });

@@ -1,8 +1,8 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import type { ApiRequest } from "../shared/types";
-import { exportCurl, fetchErrorMessage, formatJson, parseHeaderLines, sendRequest, type TestResult } from "../shared/http";
+import { exportCurl, fetchErrorMessage, fillVars, formatJson, parseHeaderLines, parseVars, sendRequest, type TestResult } from "../shared/http";
 import { diagnose } from "../shared/diagnostics";
-import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms } from "./ui";
+import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms, pathOf } from "./ui";
 import { requestHosts, setOriginRule } from "./origin";
 
 export interface Draft {
@@ -12,6 +12,11 @@ export interface Draft {
   body: string;
   origin: string; // "" sends no Origin, like cURL
   note?: string; // what a replay could not restore
+}
+
+interface Saved {
+  name: string;
+  draft: Draft;
 }
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -25,6 +30,32 @@ export default function Tester({ draft }: { draft?: Draft }) {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<AbortController>();
   const [armed, setArmed] = useState(false); // second click needed for DELETE
+  const [saved, setSaved] = useState<Saved[]>([]);
+  const [varsText, setVarsText] = useState("");
+  const [saveName, setSaveName] = useState<string>(); // set while naming a request to save
+
+  useEffect(() => {
+    chrome.storage.local.get("saved").then((d) => setSaved((d.saved as Saved[]) ?? []));
+    chrome.storage.local.get("vars").then((d) => setVarsText((d.vars as string) ?? ""));
+  }, []);
+
+  const keepSaved = (next: Saved[]) => {
+    setSaved(next);
+    void chrome.storage.local.set({ saved: next });
+  };
+  const save = () => {
+    const name = saveName?.trim();
+    if (!name) return;
+    const { note: _note, ...request } = form; // eslint-disable-line @typescript-eslint/no-unused-vars -- drop the replay note
+    keepSaved([{ name, draft: request }, ...saved.filter((s) => s.name !== name)]); // same name overwrites
+    setSaveName(undefined);
+  };
+  const load = (s: Saved) => {
+    setForm(s.draft);
+    setOutcome(undefined);
+    setError(undefined);
+    setArmed(false);
+  };
 
   const set = (patch: Partial<Draft>) => {
     setForm((f) => ({ ...f, ...patch }));
@@ -36,29 +67,42 @@ export default function Tester({ draft }: { draft?: Draft }) {
     if (busy) return;
     setError(undefined);
 
+    // {{name}} placeholders come from Variables.
+    const vars = parseVars(varsText);
+    const missing = new Set<string>();
+    const fill = (text: string) => {
+      const r = fillVars(text, vars);
+      r.missing.forEach((m) => missing.add(m));
+      return r.text;
+    };
+    const f = { ...form, url: fill(form.url), headers: fill(form.headers), body: fill(form.body), origin: fill(form.origin) };
+    if (missing.size) {
+      return setError(`Unknown variable ${[...missing].map((m) => `{{${m}}}`).join(", ")}. Define it under Saved & variables.`);
+    }
+
     let url: URL;
     try {
-      url = new URL(form.url);
+      url = new URL(f.url);
       if (!/^https?:$/.test(url.protocol)) throw new Error();
     } catch {
       return setError("Enter a full http:// or https:// URL.");
     }
 
     let origin = "";
-    if (form.origin.trim()) {
+    if (f.origin.trim()) {
       try {
-        origin = new URL(form.origin.trim()).origin;
+        origin = new URL(f.origin.trim()).origin;
         if (!/^https?:/.test(origin)) throw new Error();
       } catch {
         return setError("Origin must look like http://localhost:3000, or be empty.");
       }
     }
 
-    const headers = parseHeaderLines(form.headers);
+    const headers = parseHeaderLines(f.headers);
     if (hasBody) {
       const ct = headers["content-type"];
       try {
-        JSON.parse(form.body);
+        JSON.parse(f.body);
         headers["content-type"] ??= "application/json";
       } catch (e) {
         if (ct?.includes("json")) return setError(`Body is not valid JSON: ${(e as Error).message}`);
@@ -84,7 +128,7 @@ export default function Tester({ draft }: { draft?: Draft }) {
         return setError(`Could not set the Origin header (${(e as Error).message}). Reload the extension and try again.`);
       }
       if (ctrl.signal.aborted) return;
-      const result = await sendRequest(form.method, r.url, headers, hasBody ? form.body : undefined, ctrl.signal);
+      const result = await sendRequest(form.method, r.url, headers, hasBody ? f.body : undefined, ctrl.signal);
       setOutcome({
         r: { ...r, status: result.status, statusText: result.statusText, durationMs: result.durationMs, responseHeaders: result.headers },
         result
@@ -146,8 +190,47 @@ export default function Tester({ draft }: { draft?: Draft }) {
           </button>
         )}
         <CopyButton label="Copy cURL" text={() => exportCurl(form.method, form.url, { ...parseHeaderLines(form.headers), ...(form.origin && { origin: form.origin }) }, hasBody ? form.body : undefined)} />
-        <span className="muted small grow">Ctrl+Enter to send · uses your browser session</span>
+        {saveName === undefined ? (
+          <button onClick={() => setSaveName(form.url ? `${form.method} ${pathOf(fillVars(form.url, parseVars(varsText)).text)}` : "")}>
+            Save
+          </button>
+        ) : (
+          <>
+            <input aria-label="Name for this request" className="grow" value={saveName} autoFocus
+              onChange={(e) => setSaveName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+            <button onClick={save}>Save</button>
+            <button className="link" onClick={() => setSaveName(undefined)}>Cancel</button>
+          </>
+        )}
       </div>
+      <p className="muted small">Ctrl+Enter to send · uses your browser session</p>
+
+      <details className="field saved">
+        <summary>
+          Saved ({saved.length}) &amp; variables ({Object.keys(parseVars(varsText)).length})
+        </summary>
+        {saved.length ? (
+          <ul className="chips">
+            {saved.map((s) => (
+              <li key={s.name}>
+                <button className="link" onClick={() => load(s)}>{s.name}</button>
+                <button aria-label={`Delete ${s.name}`} onClick={() => keepSaved(saved.filter((x) => x !== s))}>×</button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted small">No saved requests yet.</p>
+        )}
+        <label className="field">
+          Variables <span className="muted">(name=value per line; use as {"{{name}}"} in the URL, headers, body or Origin)</span>
+          <textarea rows={3} value={varsText} spellCheck={false} placeholder={"baseUrl=http://localhost:3000\ntoken=…"}
+            onChange={(e) => {
+              setVarsText(e.target.value);
+              void chrome.storage.local.set({ vars: e.target.value });
+            }} />
+        </label>
+        <p className="muted small">Saved requests and variables are kept on this computer, unmasked.</p>
+      </details>
       {armed && <p className="warn-text">DELETE can remove data. Click again to confirm.</p>}
       {error && <p className="warn-text">{error}</p>}
 

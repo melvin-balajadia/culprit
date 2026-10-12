@@ -24,7 +24,7 @@ export interface Applied {
 }
 
 // Split "user.items[0].id" into ["user", "items", 0, "id"].
-const segments = (path: string) =>
+export const segments = (path: string) =>
   path.split(".").flatMap((part) => part.split(/\[(\d+)\]/).filter(Boolean).map((s) => (/^\d+$/.test(s) ? Number(s) : s)));
 
 // Value at a link's fromPath in a step's output: "response.user.id" or "header.x-csrf-token".

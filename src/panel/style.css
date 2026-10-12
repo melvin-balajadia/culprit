@@ -189,3 +189,4 @@ kbd { font: 10px ui-monospace, monospace; padding: 0 4px; border: 1px solid var(
 .step-edit input { width: 100%; }
 .step-result { margin-top: 4px; }
 .badge.warn { background: var(--warn); }
+.saved .chips li { font-size: 12px; }

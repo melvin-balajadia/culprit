@@ -139,6 +139,26 @@ export function parseHeaderLines(text: string): Headers {
   return out;
 }
 
+// Tester variables: "name=value" per line, used as {{name}} (same syntax as the Postman export).
+export function parseVars(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const i = line.indexOf("=");
+    if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  return out;
+}
+
+export function fillVars(text: string, vars: Record<string, string>): { text: string; missing: string[] } {
+  const missing: string[] = [];
+  const filled = text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (m, name: string) => {
+    if (name in vars) return vars[name];
+    missing.push(name);
+    return m;
+  });
+  return { text: filled, missing };
+}
+
 export const headerLines = (h: Headers) =>
   Object.entries(h)
     .map(([k, v]) => `${k}: ${v}`)
@@ -204,15 +224,29 @@ export function fetchErrorMessage(e: unknown): string {
 }
 
 // Markdown summary meant for pasting into a ticket or chat. Everything sensitive is masked.
-export function buildReport(r: ApiRequest, diagnostics: Diagnostic[], baseline?: ApiRequest, raw?: RawData): string {
-  const outcome = r.status !== undefined ? `${r.status} ${r.statusText ?? ""}`.trim() : r.error;
+export function buildReport(
+  r: ApiRequest,
+  diagnostics: Diagnostic[],
+  baseline?: ApiRequest,
+  raw?: RawData,
+  trace?: { chain: ApiRequest[]; culprit?: ApiRequest } // from traceBack
+): string {
+  const outcome = (x: ApiRequest) => (x.status !== undefined ? `${x.status} ${x.statusText ?? ""}`.trim() : x.error);
   const lines = [
     `### ${r.method} ${redactUrl(r.url)}`,
-    `**Result:** ${outcome}${r.corsError ? ` (CORS: ${r.corsError})` : ""} · ${r.durationMs ?? "?"} ms · ${new Date(r.startedAt).toISOString()}`,
+    `**Result:** ${outcome(r)}${r.corsError ? ` (CORS: ${r.corsError})` : ""} · ${r.durationMs ?? "?"} ms · ${new Date(r.startedAt).toISOString()}`,
+    ...(r.callSite ? [`**Called from:** \`${r.callSite}\``] : []),
     "",
     "**Diagnosis**",
     ...(diagnostics.length ? diagnostics.map((d) => `- [${d.severity}] ${d.title}: ${d.explanation} Next: ${d.nextStep}`) : ["- Nothing unusual detected."])
   ];
+  if (trace && trace.chain.length > 1) {
+    lines.push("", "**Chain** (oldest first; each call used values from the ones before it)");
+    trace.chain.forEach((x, i) => {
+      const tag = x.id === trace.culprit?.id ? " ← culprit" : x.id === r.id ? " ← this call" : "";
+      lines.push(`${i + 1}. ${x.method} ${new URL(redactUrl(x.url)).pathname} → ${outcome(x)}${tag}`);
+    });
+  }
   if (baseline) {
     lines.push("", "**Compared with last success**", "| field | this request | last success |", "|---|---|---|");
     for (const row of compare(r, baseline)) {

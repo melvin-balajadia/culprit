@@ -194,3 +194,29 @@ describe("Re-run chain", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("Tester variables and saved requests", () => {
+  it("fills {{variables}}, refuses unknown ones, and saves the request", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    fake.data.local.vars = "base=http://localhost:3000";
+    fake.data.local.saved = [];
+    render(<Tester />);
+    await waitFor(() => expect(screen.getByText(/variables \(1\)/)).toBeTruthy()); // stored variables loaded
+
+    fireEvent.change(screen.getByLabelText("URL"), { target: { value: "{{base}}/api/{{missing}}" } });
+    fireEvent.click(screen.getByText("Send"));
+    expect(await screen.findByText(/Unknown variable \{\{missing\}\}/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("URL"), { target: { value: "{{base}}/api/me" } });
+    fireEvent.click(screen.getByText("Send"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe("http://localhost:3000/api/me");
+
+    fireEvent.click(screen.getByText("Save"));
+    expect((screen.getByLabelText("Name for this request") as HTMLInputElement).value).toBe("GET /api/me");
+    fireEvent.click(screen.getAllByText("Save").at(-1)!);
+    expect(fake.data.local.saved).toEqual([{ name: "GET /api/me", draft: { method: "GET", url: "{{base}}/api/me", headers: "", body: "", origin: "" } }]);
+    vi.unstubAllGlobals();
+  });
+});

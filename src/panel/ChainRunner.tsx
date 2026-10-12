@@ -6,7 +6,8 @@ import { applyLinks, changesData, type Applied, type Output, type Step } from ".
 import { REDACTED, fetchErrorMessage, headerLines, isFailure, parseHeaderLines, replayable, sendRequest } from "../shared/http";
 import { diagnose } from "../shared/diagnostics";
 import { requestHosts, setOriginRule } from "./origin";
-import { Diagnostics, StatusPill, ms, pathOf } from "./ui";
+import { CopyButton, Diagnostics, StatusPill, ms, pathOf } from "./ui";
+import { toPostman, toVitest } from "../shared/export";
 
 interface Result {
   r: ApiRequest;
@@ -149,7 +150,12 @@ export default function ChainRunner({ r, history }: { r: ApiRequest; history: Ap
             {armed ? `Confirm: run ${risky.length} call${risky.length > 1 ? "s that change" : " that changes"} data` : `Run ${steps.length} calls`}
           </button>
         )}
+        <CopyButton label="Copy as Postman" text={() => toPostman(steps, `Culprit: ${steps.at(-1)!.label}`)} />
+        <CopyButton label="Copy as Vitest test" text={() => toVitest(steps, `${steps.at(-1)!.label} succeeds`, calls.map((c) => c.status))} />
       </div>
+      <p className="muted small">
+        Exports keep the chaining (variables or code) and replace secrets with placeholders. In Postman: Import → Raw text.
+      </p>
       {armed && <p className="warn-text">{risky.map((s) => s.label).join(", ")} will run again on the server.</p>}
     </div>
   );
