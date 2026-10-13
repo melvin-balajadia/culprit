@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ApiRequest, RawData } from "./types";
-import { LineageIndex, extractValues, fingerprint, isDistinctive, traceBack } from "./lineage";
+import { LineageIndex, extractValues, fingerprint, flowGraph, isDistinctive, traceBack } from "./lineage";
 import { diagnose } from "./diagnostics";
 import { callSiteOf } from "./capture";
 
@@ -142,5 +142,37 @@ describe("helpers", () => {
     };
     expect(callSiteOf(stack)).toBe("src/api/orders.ts:42 loadOrders");
     expect(callSiteOf(undefined)).toBeUndefined();
+  });
+});
+
+describe("flowGraph", () => {
+  const call = (id: string, url: string, at: number, extra: Partial<ApiRequest> = {}): ApiRequest =>
+    ({ id, tabId: 1, method: "GET", url, startedAt: at, status: 200, ...extra });
+  const login = call("login", "http://app.test/api/login", 1, { method: "POST" });
+  const u7 = call("u7", "http://app.test/api/users/7", 2, { links: [{ from: "login", fromPath: "response.access_token", to: "header.authorization", confidence: "certain" }] });
+  const u8 = call("u8", "http://app.test/api/users/8", 3, {
+    status: 404,
+    links: [
+      { from: "login", fromPath: "response.access_token", to: "header.authorization", confidence: "certain" },
+      { from: "login", fromPath: "response.user.id", to: "path[3]", confidence: "certain", missing: true }
+    ]
+  });
+  const history = [u8, u7, login];
+
+  it("joins endpoints by the values one fed the other, oldest endpoint first", () => {
+    const { nodes, edges } = flowGraph(history, history);
+    expect(nodes.map((n) => [n.key, n.calls, n.failed, n.latest.id])).toEqual([
+      ["POST app.test/api/login", 1, 0, "login"],
+      ["GET app.test/api/users/:id", 2, 1, "u8"]
+    ]);
+    expect(edges).toEqual([
+      { from: "POST app.test/api/login", to: "GET app.test/api/users/:id", count: 3, missing: true, fields: ["access_token → header.authorization", "user.id → path[3]"] }
+    ]);
+  });
+
+  it("keeps the source of a filtered call", () => {
+    const { nodes, edges } = flowGraph([u8], history);
+    expect(nodes.map((n) => n.key)).toEqual(["POST app.test/api/login", "GET app.test/api/users/:id"]);
+    expect(edges[0].count).toBe(2);
   });
 });

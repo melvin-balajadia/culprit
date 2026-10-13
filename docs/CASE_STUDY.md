@@ -115,7 +115,7 @@ flowchart LR
 | **Exports** | Postman collection with variables and scripts already written; Vitest regression test; HAR; masked Markdown report |
 | **Contract drift** | Learns each endpoint's usual response and flags a `200` that lost a field or turned a value into `null` |
 | **Comparison with last success** | Differences in status, query, headers and response fields versus the last successful call to the same endpoint |
-| **Views** | List, grouped by endpoint (with failure rate), and a timeline that highlights linked calls |
+| **Views** | List, grouped by endpoint (with failure rate), a timeline that highlights linked calls, and a flow map of which endpoints feed which |
 | **Tester** | Send requests with your browser session; saved requests and `{{variables}}` |
 
 ### The value
@@ -237,7 +237,7 @@ flowchart TD
 | **Export** | Copies the chain as a Postman collection (variables and scripts ready) or as an automated test; also a masked bug report, cURL or HAR file | A bug found in the browser becomes something the team can reuse |
 | **Shape changed** | Learns what each endpoint normally returns and flags a `200` that lost a field or returned `null` unexpectedly | Catches the bugs that look like successes |
 | **Compare with last success** | Shows what differs from the last time the same endpoint worked | Points straight at what changed |
-| **Views** | List, grouped by endpoint (with failure rate), and a timeline | See patterns: which endpoint fails most, what ran in what order |
+| **Views** | List, grouped by endpoint (with failure rate), a timeline, and a flow map | See patterns: which endpoint fails most, what ran in what order, what depends on what |
 | **Watched endpoints** | Pin an endpoint to keep its latest status at the top | Keep an eye on the endpoints you care about |
 | **Tester** | Send your own requests using your browser session, with saved requests and `{{variables}}` | Quick checks without leaving the browser |
 
@@ -252,6 +252,8 @@ flowchart TD
 ![Diagnosis compared with the last success](../store/screenshots/05-compare.webp)
 
 ![The timeline, with the calls linked to the hovered one highlighted](../store/screenshots/06-timeline.webp)
+
+![The flow map: endpoints joined by the values one fed another, with a null id marked in red](../store/screenshots/07-flow.webp)
 
 ---
 

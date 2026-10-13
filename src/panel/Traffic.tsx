@@ -5,10 +5,10 @@ import { diagnose } from "../shared/diagnostics";
 import { Body, CopyButton, Diagnostics, HeaderList, StatusPill, ms } from "./ui";
 import type { Draft } from "./Tester";
 import Trace from "./Trace";
-import { GroupView, ListView, TimelineView, Watching } from "./Views";
+import { FlowView, GroupView, ListView, MAX_FLOW, TimelineView, Watching } from "./Views";
 import ChainRunner from "./ChainRunner";
 import { parseShape, shapeDiff } from "../shared/shape";
-import { traceBack } from "../shared/lineage";
+import { flowGraph, traceBack } from "../shared/lineage";
 import { toHar } from "../shared/export";
 
 async function exportHar(records: ApiRequest[]) {
@@ -23,8 +23,8 @@ async function exportHar(records: ApiRequest[]) {
   URL.revokeObjectURL(link.href);
 }
 
-type View = "list" | "group" | "timeline";
-const VIEWS: [View, string][] = [["list", "List"], ["group", "By endpoint"], ["timeline", "Timeline"]];
+type View = "list" | "group" | "timeline" | "flow";
+const VIEWS: [View, string][] = [["list", "List"], ["group", "By endpoint"], ["timeline", "Timeline"], ["flow", "Flow"]];
 
 // Keyboard shortcuts apply only when the panel tab is visible and the user isn't typing in a field.
 const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
@@ -89,8 +89,11 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
   );
   const failures = shown.filter(isFailure).length;
   const focus = Math.min(focusIndex, shown.length - 1);
-  // j/k walk the calls in the order the list and timeline show them.
-  const ordered = view === "timeline" ? [...shown.slice(0, 60)].reverse() : shown;
+  // j/k walk the calls in the order the list and timeline show them; in Flow, each endpoint's latest call.
+  const ordered =
+    view === "timeline" ? [...shown.slice(0, 60)].reverse()
+    : view === "flow" ? flowGraph(shown, requests).nodes.slice(0, MAX_FLOW).map((n) => n.latest)
+    : shown;
 
   useKeys(active && !selected, (e) => {
     if (e.key === "/") {
@@ -138,7 +141,7 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
     }
   };
 
-  const ViewComponent = { list: ListView, group: GroupView, timeline: TimelineView }[view];
+  const ViewComponent = { list: ListView, group: GroupView, timeline: TimelineView, flow: FlowView }[view];
 
   return (
     <section>

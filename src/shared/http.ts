@@ -73,6 +73,14 @@ export function endpointKey(method: string, url: string): string {
   }
 }
 
+// "GET api.test/users/:id" -> { method: "GET", host: "api.test", path: "/users/:id" }
+export function splitKey(key: string) {
+  const space = key.indexOf(" ");
+  const rest = key.slice(space + 1);
+  const slash = rest.indexOf("/");
+  return { method: key.slice(0, space), host: slash < 0 ? rest : rest.slice(0, slash), path: slash < 0 ? "/" : rest.slice(slash) };
+}
+
 // history is newest-first, so this is the most recent success.
 export function findBaseline(r: ApiRequest, history: ApiRequest[]): ApiRequest | undefined {
   const key = endpointKey(r.method, r.url);

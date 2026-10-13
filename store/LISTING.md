@@ -29,7 +29,7 @@ Copy these into the developer dashboard. Upload-ready images (PNG, the formats t
 >
 > **Catch the 200s that break your UI.** Culprit learns each endpoint's usual response and flags a success that lost a field or turned a value into null.
 >
-> Also: diagnoses for common HTTP and network errors (CORS, expired tokens, server down, HTML instead of JSON…), comparison with the last success, timeline and per-endpoint views, a request tester with saved requests and variables, HAR export, and masked reports for tickets. Keyboard friendly.
+> Also: diagnoses for common HTTP and network errors (CORS, expired tokens, server down, HTML instead of JSON…), comparison with the last success, timeline, per-endpoint and flow views, a request tester with saved requests and variables, HAR export, and masked reports for tickets. Keyboard friendly.
 >
 > **Private by design:** everything stays in your browser. No server, no account, no analytics. Tokens, cookies and passwords are masked before anything is saved or copied.
 
@@ -66,6 +66,8 @@ Upload these from `store/screenshots/store-upload/` (1280×800 PNG, no transpare
 4. `04-shape-changed.png`: a 200 whose response shape changed, on a watched endpoint
 5. `05-compare.png`: diagnosis compared with the last success
 
+Also available: `07-flow.png`, the flow map of which endpoints feed which. To show it, swap it in for one of the five above.
+
 **Small promo tile** (440×280): `promo-small.png`.
 
-The WebP files in `store/screenshots/` (2560×1600, plus `featured.webp` at 1920×1080 and a sixth timeline shot) are high-resolution versions for the portfolio, case study and GitHub. The store doesn't accept WebP.
+The WebP files in `store/screenshots/` (2560×1600, plus `featured.webp` at 1920×1080, a timeline shot and a flow shot) are high-resolution versions for the portfolio, case study and GitHub. The store doesn't accept WebP.

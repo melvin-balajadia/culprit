@@ -2,7 +2,7 @@
 // request used. Pure and Chrome-free; background.ts feeds it captures, the panel reads the resulting links.
 // Privacy: the index keeps fingerprints and field paths only, never the values themselves.
 import type { ApiRequest, Headers, Link, RawData } from "./types";
-import { isFailure, isSensitive } from "./http";
+import { endpointKey, isFailure, isSensitive, splitKey } from "./http";
 
 const MAX_LEAVES = 2000;
 const MAX_DEPTH = 8;
@@ -261,6 +261,64 @@ export function relatedIds(r: ApiRequest, history: ApiRequest[]): Set<string> {
     frontier = next;
   }
   return ids;
+}
+
+export interface FlowNode {
+  key: string; // endpointKey
+  method: string;
+  host: string;
+  path: string;
+  calls: number;
+  failed: number;
+  latest: ApiRequest;
+  firstAt: number;
+}
+
+export interface FlowEdge {
+  from: string; // endpointKey of the producer
+  to: string; // endpointKey of the consumer
+  count: number; // links between them
+  missing: boolean; // some value was null in the producer's response
+  fields: string[]; // "access_token → header.authorization"
+}
+
+// Endpoints linked by values one fed another, for the Flow view, oldest endpoint first. Sources come from
+// history, so a filtered list (errors only) still shows where its values came from.
+export function flowGraph(shown: ApiRequest[], history: ApiRequest[]): { nodes: FlowNode[]; edges: FlowEdge[] } {
+  const byId = new Map(history.map((h) => [h.id, h]));
+  const calls = new Map(shown.map((r) => [r.id, r]));
+  for (const r of shown) for (const l of r.links ?? []) if (byId.has(l.from)) calls.set(l.from, byId.get(l.from)!);
+
+  const nodes = new Map<string, FlowNode>();
+  for (const r of calls.values()) {
+    const key = endpointKey(r.method, r.url);
+    const n = nodes.get(key) ?? { key, ...splitKey(key), calls: 0, failed: 0, latest: r, firstAt: r.startedAt };
+    n.calls++;
+    if (isFailure(r)) n.failed++;
+    if (r.startedAt > n.latest.startedAt) n.latest = r;
+    n.firstAt = Math.min(n.firstAt, r.startedAt);
+    nodes.set(key, n);
+  }
+
+  const edges = new Map<string, FlowEdge>();
+  for (const r of shown) {
+    for (const l of r.links ?? []) {
+      const src = byId.get(l.from);
+      if (!src) continue;
+      const from = endpointKey(src.method, src.url);
+      const to = endpointKey(r.method, r.url);
+      if (from === to) continue;
+      const e = edges.get(`${from}\n${to}`) ?? { from, to, count: 0, missing: false, fields: [] };
+      e.count++;
+      e.missing ||= !!l.missing;
+      const field = `${l.fromPath.replace(/^response\./, "")} → ${l.to}`;
+      if (!e.fields.includes(field)) e.fields.push(field);
+      edges.set(`${from}\n${to}`, e);
+    }
+  }
+  // Endpoints that fed nothing and used nothing would only be noise on a map of dependencies.
+  const linked = new Set([...edges.values()].flatMap((e) => [e.from, e.to]));
+  return { nodes: [...nodes.values()].filter((n) => linked.has(n.key)).sort((a, b) => a.firstAt - b.firstAt), edges: [...edges.values()] };
 }
 
 function pathOf(url: string) {

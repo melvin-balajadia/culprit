@@ -175,6 +175,16 @@ code { font: 11px ui-monospace, monospace; }
 .tl-bar.warn { background: var(--warn); }
 .tl-bar.fail { background: var(--fail); }
 .tl-bar.muted { background: var(--muted); }
+.flow { display: flex; margin-top: 8px; border-top: 1px solid var(--line); }
+.flow-arcs { flex: none; overflow: visible; }
+.flow-rows { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; }
+.flow-row { height: 28px; padding: 0 2px; transition: opacity .1s; }
+.flow-row.dim, .arc.dim { opacity: .25; }
+.arc { color: var(--muted); transition: opacity .1s; }
+.arc.bad { color: var(--fail); }
+.arc path { fill: none; stroke: currentColor; stroke-width: 1.5; pointer-events: stroke; }
+.arc.bad path { stroke-dasharray: 4 2; }
+.arc circle { fill: currentColor; }
 .keys { margin-top: 12px; }
 kbd { font: 10px ui-monospace, monospace; padding: 0 4px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--soft); }
 

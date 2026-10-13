@@ -242,3 +242,22 @@ describe("watching endpoints", () => {
     await waitFor(() => expect(document.querySelector(".watching")).toBeNull());
   });
 });
+
+describe("flow view", () => {
+  it("draws an arc from the endpoint that supplied a value and opens an endpoint's latest call", async () => {
+    const link = { from: "http://localhost:3000/api/login", fromPath: "response.token", to: "header.authorization", confidence: "certain" as const };
+    fake.data.local.requests = [
+      req({ url: "http://localhost:3000/api/orders/9", status: 401, startedAt: 3, links: [link] }),
+      req({ url: "http://localhost:3000/api/health", status: 200, startedAt: 2 }),
+      req({ url: "http://localhost:3000/api/login", method: "POST", status: 200, startedAt: 1 })
+    ];
+    render(<Traffic onReplay={() => {}} />);
+    await screen.findByText("/api/orders/9");
+    fireEvent.click(screen.getByText("Flow"));
+    const rows = [...document.querySelectorAll(".flow-row .path")].map((p) => p.textContent);
+    expect(rows).toEqual(["/api/login", "/api/orders/:id"]); // health is linked to nothing
+    expect(document.querySelectorAll(".arc")).toHaveLength(1);
+    fireEvent.click(rowFor("/api/orders/:id"));
+    expect(await screen.findByText("http://localhost:3000/api/orders/9")).toBeTruthy();
+  });
+});

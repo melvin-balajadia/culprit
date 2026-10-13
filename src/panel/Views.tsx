@@ -1,8 +1,8 @@
-// The three ways to look at captured calls: a list, grouped by endpoint, and a timeline.
+// The ways to look at captured calls: a list, grouped by endpoint, a timeline, and the flow between endpoints.
 import { useState } from "react";
 import type { ApiRequest } from "../shared/types";
-import { endpointKey, isFailure } from "../shared/http";
-import { relatedIds } from "../shared/lineage";
+import { endpointKey, isFailure, splitKey } from "../shared/http";
+import { flowGraph, relatedIds } from "../shared/lineage";
 import { StatusPill, kindOf, ms, pathOf } from "./ui";
 
 interface ViewProps {
@@ -12,14 +12,6 @@ interface ViewProps {
   onOpen: (r: ApiRequest) => void;
   pins?: string[]; // watched endpoint keys
   onTogglePin?: (key: string) => void;
-}
-
-// "GET api.test/users/:id" -> { method: "GET", host: "api.test", path: "/users/:id" }
-export function splitKey(key: string) {
-  const space = key.indexOf(" ");
-  const rest = key.slice(space + 1);
-  const slash = rest.indexOf("/");
-  return { method: key.slice(0, space), host: slash < 0 ? rest : rest.slice(0, slash), path: slash < 0 ? "/" : rest.slice(slash) };
 }
 
 export function Row({ r, focused, onOpen }: { r: ApiRequest; focused?: boolean; onOpen: (r: ApiRequest) => void }) {
@@ -179,6 +171,68 @@ export function TimelineView({ shown, history, focusedId, onOpen }: ViewProps) {
           </span>
         </button>
       ))}
+    </div>
+  );
+}
+
+export const MAX_FLOW = 40;
+const ROW = 28; // px, the height of .flow-row
+const GUTTER = 48; // px, room for the arcs
+const y = (i: number) => i * ROW + ROW / 2;
+
+// Endpoints oldest first; an arc on the left joins an endpoint to the ones it fed values to (dot = consumer).
+// Red when the producer failed or returned null. Hovering one dims the endpoints not directly connected to it.
+export function FlowView({ shown, history, focusedId, onOpen }: ViewProps) {
+  const [hovered, setHovered] = useState<string>();
+  const { nodes, edges } = flowGraph(shown, history);
+  const rows = nodes.slice(0, MAX_FLOW);
+  const at = new Map(rows.map((n, i) => [n.key, i]));
+  const drawn = edges.filter((e) => at.has(e.from) && at.has(e.to));
+  if (!drawn.length) {
+    return <p className="muted empty">No call has fed a value to another yet. Turn on Deep capture for this tab to see which calls feed which (tokens, ids, links).</p>;
+  }
+  const failing = new Set(rows.filter((n) => n.failed).map((n) => n.key));
+  const near = hovered && new Set([hovered, ...drawn.flatMap((e) => (e.from === hovered ? [e.to] : e.to === hovered ? [e.from] : []))]);
+
+  return (
+    <div className="flow">
+      <svg className="flow-arcs" width={GUTTER} height={rows.length * ROW} aria-hidden="true">
+        {drawn.map((e) => {
+          const [a, b] = [at.get(e.from)!, at.get(e.to)!];
+          const bend = GUTTER - Math.min(GUTTER - 4, 6 + Math.abs(b - a) * 10);
+          const cls = `arc ${e.missing || failing.has(e.from) ? "bad" : ""} ${hovered && e.from !== hovered && e.to !== hovered ? "dim" : ""}`;
+          return (
+            <g key={`${e.from}\n${e.to}`} className={cls}>
+              <title>{`${e.from} → ${e.to}\n${e.fields.join("\n")}`}</title>
+              <path d={`M ${GUTTER} ${y(a)} C ${bend} ${y(a)}, ${bend} ${y(b)}, ${GUTTER} ${y(b)}`} />
+              <circle cx={GUTTER - 3} cy={y(b)} r={2.5} />
+            </g>
+          );
+        })}
+      </svg>
+      <ul className="flow-rows">
+        {rows.map((n) => {
+          const rate = Math.round((n.failed / n.calls) * 100);
+          return (
+            <li key={n.key}>
+              <button
+                className={`row flow-row ${n.latest.id === focusedId ? "focused" : ""} ${near && !near.has(n.key) ? "dim" : ""}`}
+                onMouseEnter={() => setHovered(n.key)}
+                onMouseLeave={() => setHovered(undefined)}
+                onFocus={() => setHovered(n.key)}
+                onBlur={() => setHovered(undefined)}
+                onClick={() => onOpen(n.latest)}
+                title={`${n.host} · opens the latest call`}
+              >
+                <span className={`rate ${rate === 0 ? "ok" : rate === 100 ? "fail" : "warn"}`}>{rate}%</span>
+                <b>{n.method}</b>
+                <span className="path">{n.path}</span>
+                <span className="muted">{n.calls}×</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
