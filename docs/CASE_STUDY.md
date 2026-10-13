@@ -348,7 +348,7 @@ The goal was under 5 ms: met in the typical case, but not in the slowest 5%.
 - **Product direction.** I set the goals, researched the competitors, and chose the root-cause trace as the product's focus.
 - **Real-world testing.** I tested it on my own backend and found the CORS replay problem, the keyboard shortcut clash and the missing toolbar icon.
 - **Quality.** I ran a full code review and prioritised the fixes, including the security ones.
-- **Scope.** I approved the roadmap and decided what to leave out (mock servers, cloud sync, a generic graph view).
+- **Scope.** I approved the roadmap and decided what to leave out (mock servers, cloud sync, a free-form graph view; the Flow map is the focused alternative that was added instead).
 - **Branding and release.** I named it *Culprit*, chose the logo, set up the GitHub repository, and prepared the Chrome Web Store submission.
 
 ### Key learnings

@@ -64,9 +64,9 @@ Upload these from `store/screenshots/store-upload/` (1280×800 PNG, no transpare
 2. `02-rerun.png`: the chain re-run with fresh data, 401 → 200
 3. `03-export.png`: the chain turned into a Vitest test
 4. `04-shape-changed.png`: a 200 whose response shape changed, on a watched endpoint
-5. `05-compare.png`: diagnosis compared with the last success
+5. `07-flow.png`: the flow map of which endpoints feed which, with a null id in red
 
-Also available: `07-flow.png`, the flow map of which endpoints feed which. To show it, swap it in for one of the five above.
+Also available: `05-compare.png`, the diagnosis compared with the last success. To show it, swap it in for one of the five above.
 
 **Small promo tile** (440×280): `promo-small.png`.
 
