@@ -110,7 +110,7 @@ export default function ChainRunner({ r, history }: { r: ApiRequest; history: Ap
                 </button>
               </div>
               {fed.map((l) => (
-                <div className="edge small" key={l.to}>
+                <div className="edge small" key={`${l.from} ${l.to}`}>
                   ← {l.to} from step {stepOf(l.from)}&apos;s {field(l.fromPath)}
                 </div>
               ))}
@@ -131,7 +131,7 @@ export default function ChainRunner({ r, history }: { r: ApiRequest; history: Ap
                   <StatusPill r={res.r} /> {res.r.statusText || res.r.error} · {ms(res.r.durationMs)}
                   <span className="muted small"> (was <StatusPill r={calls[i]} />)</span>
                   {res.applied.filter((a) => !a.ok).map((a) => (
-                    <p className="warn-text small" key={a.link.to}>
+                    <p className="warn-text small" key={`${a.link.from} ${a.link.to}`}>
                       Couldn&apos;t fill {a.link.to}: step {stepOf(a.link.from)}&apos;s response had no {field(a.link.fromPath)}, so the original value was kept.
                     </p>
                   ))}

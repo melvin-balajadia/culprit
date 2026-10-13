@@ -265,7 +265,7 @@ Everything below was measured on this project. Things that weren't measured are 
 
 | What was checked | Result |
 |---|---|
-| **Automated tests** | **92 tests passing**, run automatically on every change |
+| **Automated tests** | **97 tests passing**, run automatically on every change |
 | **Finding the culprit** | Correct in **3 of 3** demo scenarios: the failed token refresh behind a 401, the empty profile behind `/users/undefined`, and no false blame on a healthy chain |
 | **Re-running a chain** | A failed orders call went from **401 to 200** after replaying it with a fresh login |
 | **Exported test** | A test generated from a captured chain **passed when run against the live API** |
@@ -316,7 +316,7 @@ The goal was under 5 ms: met in the typical case, but not in the slowest 5%.
 
 ### How it was tested
 
-- **Automated tests (92)** for the logic (diagnoses, masking, connecting calls, re-runs, exports, shape checks) and for the interface (filters, replay, the Why? chain, keyboard, re-run).
+- **Automated tests (97)** for the logic (diagnoses, masking, connecting calls, re-runs, exports, shape checks) and for the interface (filters, replay, the Why? chain, keyboard, re-run).
 - **Automatic checks on every push** (tests, code style and build) via GitHub Actions.
 - **Real-browser testing** against a demo API with one button per scenario: every failure type, three call chains with a known cause, and a "shape changed" case.
 

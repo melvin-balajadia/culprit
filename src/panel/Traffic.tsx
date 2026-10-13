@@ -88,12 +88,12 @@ export default function Traffic({ onReplay, active = true }: { onReplay: (d: Dra
       (!q || `${r.method} ${r.url} ${r.status ?? r.error}`.toLowerCase().includes(q))
   );
   const failures = shown.filter(isFailure).length;
-  const focus = Math.min(focusIndex, shown.length - 1);
   // j/k walk the calls in the order the list and timeline show them; in Flow, each endpoint's latest call.
   const ordered =
     view === "timeline" ? [...shown.slice(0, 60)].reverse()
     : view === "flow" ? flowGraph(shown, requests).nodes.slice(0, MAX_FLOW).map((n) => n.latest)
     : shown;
+  const focus = Math.min(focusIndex, ordered.length - 1); // a shorter view (timeline, flow) can't focus past its end
 
   useKeys(active && !selected, (e) => {
     if (e.key === "/") {

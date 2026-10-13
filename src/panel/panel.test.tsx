@@ -261,3 +261,44 @@ describe("flow view", () => {
     expect(await screen.findByText("http://localhost:3000/api/orders/9")).toBeTruthy();
   });
 });
+
+describe("audit regressions", () => {
+  it("keeps j/k on a visible row when a view shows fewer rows than the list", async () => {
+    const link = { from: "http://localhost:3000/api/login", fromPath: "response.token", to: "header.authorization", confidence: "certain" as const };
+    fake.data.local.requests = [
+      req({ url: "http://localhost:3000/api/a", status: 200, startedAt: 5 }),
+      req({ url: "http://localhost:3000/api/b", status: 200, startedAt: 4 }),
+      req({ url: "http://localhost:3000/api/orders/9", status: 401, startedAt: 3, links: [link] }),
+      req({ url: "http://localhost:3000/api/login", method: "POST", status: 200, startedAt: 1 })
+    ];
+    render(<Traffic onReplay={() => {}} />);
+    await screen.findByText("/api/a");
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(window, { key: "j" }); // last of 4 list rows
+    fireEvent.click(screen.getByText("Flow")); // 2 endpoint rows
+    fireEvent.keyDown(window, { key: "k" });
+    await waitFor(() => expect(document.querySelector(".flow-row.focused .path")?.textContent).toBe("/api/login"));
+  });
+
+  it("still runs a chain when a step's URL was edited into something invalid", async () => {
+    fake.data.local.requests = [
+      req({ url: "http://localhost:3000/api/orders", status: 401, startedAt: 2, links: [{ from: "token", fromPath: "response.token", to: "header.authorization", confidence: "certain" }] }),
+      { ...req({ url: "http://localhost:3000/api/token", status: 200, startedAt: 1 }), id: "token" }
+    ];
+    fake.data.session["raw:token"] = { url: "http://localhost:3000/api/token", requestHeaders: {} };
+    fake.data.session["raw:http://localhost:3000/api/orders"] = { url: "http://localhost:3000/api/orders", requestHeaders: {} };
+    const fetchMock = vi.fn(async (url: string) => {
+      new URL(url); // like real fetch: an invalid URL rejects
+      return new Response('{"token":"t-123456"}', { status: 200, headers: { "content-type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<Traffic onReplay={() => {}} />);
+    fireEvent.click(await screen.findByText("/api/orders"));
+    fireEvent.click((await screen.findAllByText("Edit"))[0]);
+    fireEvent.change(screen.getByLabelText("Step 1 URL"), { target: { value: "not a url" } });
+    fireEvent.click(screen.getByText("Run 2 calls"));
+    await waitFor(() => expect(document.querySelectorAll(".step-result")).toHaveLength(2)); // step 1 fails, step 2 still runs
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+});

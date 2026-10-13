@@ -147,8 +147,11 @@ export class LineageIndex {
       try {
         for (const leaf of extractValues(JSON.parse(raw.responseBody))) {
           if (leaf.value === null) {
-            this.nulls.set(nameOf(leaf.path), { reqId: r.id, path: leaf.path, name: nameOf(leaf.path), tabId: r.tabId, at });
-            this.nulls.set(norm(leaf.key), { reqId: r.id, path: leaf.path, name: norm(leaf.key), tabId: r.tabId, at });
+            for (const name of new Set([nameOf(leaf.path), norm(leaf.key)])) {
+              this.nulls.delete(name); // re-insert: least-recently-used order, capped like producers
+              this.nulls.set(name, { reqId: r.id, path: leaf.path, name, tabId: r.tabId, at });
+              if (this.nulls.size > MAX_ENTRIES) this.nulls.delete(this.nulls.keys().next().value!);
+            }
           } else if (isDistinctive(leaf.key, leaf.value)) offer(`response.${leaf.path}`, leaf.value);
         }
       } catch {

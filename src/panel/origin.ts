@@ -26,7 +26,8 @@ export function setOriginRule(origin: string) {
 }
 
 // Host permission for every host in the list, asked once. Must be the first await in a click handler.
+// URLs that don't parse (an edited chain step) are skipped; sending them reports the error per step.
 export const requestHosts = (urls: string[]) =>
   chrome.permissions
-    .request({ origins: [...new Set(urls.map((u) => { const x = new URL(u); return `${x.protocol}//${x.hostname}/*`; }))] })
+    .request({ origins: [...new Set(urls.flatMap((u) => (URL.canParse(u) ? [`${new URL(u).protocol}//${new URL(u).hostname}/*`] : [])))] })
     .catch(() => false);
